@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bloc.us | Dominez votre blocus</title>
+    <link rel="icon" href="icon/icon.ico" type="image/x-icon">
     <!-- Chargement de Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Police Inter de Google Fonts (très moderne/pro) -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <!-- Police Inter de Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
     <!-- Configuration personnalisée de Tailwind -->
     <script>
         tailwind.config = {
@@ -35,11 +36,12 @@
     <!-- NAVIGATION -->
     <nav class="container mx-auto px-6 py-6 flex justify-between items-center">
         <div class="flex items-center space-x-2">
-            <span class="text-2xl font-black text-gray-900 tracking-tight">📚 Bloc<span class="text-brand-600">.us</span></span>
+            <span class="text-2xl font-black text-gray-900 tracking-tight">🎓 Bloc<span class="text-brand-500">.us</span></span>
         </div>
         <div class="hidden md:flex space-x-8">
             <a href="#fonctionnalites" class="text-gray-600 hover:text-brand-600 font-medium transition">Fonctionnalités</a>
             <a href="#temoignages" class="text-gray-600 hover:text-brand-600 font-medium transition">Avis</a>
+            <a href="#faq" class="text-gray-600 hover:text-brand-600 font-medium transition">FAQ</a>
         </div>
         <div>
             <a href="#download" class="bg-gray-900 hover:bg-gray-800 text-white px-5 py-2.5 rounded-full font-semibold transition shadow-lg shadow-gray-900/20">
@@ -49,11 +51,11 @@
     </nav>
 
     <!-- HERO SECTION -->
-    <section class="container mx-auto px-6 pt-20 pb-24 text-center">
+    <section class="container mx-auto px-6 pt-16 pb-20 text-center">
         <div class="inline-block bg-brand-50 border border-brand-100 text-brand-600 px-4 py-1.5 rounded-full text-sm font-semibold mb-6 shadow-sm">
-            ✨ Disponible pour macOS, iOS et iPadOS
+            🚀 Conçu spécialement pour macOS
         </div>
-        <h1 class="text-5xl md:text-7xl font-black tracking-tight text-gray-900 mb-6 leading-tight">
+        <h1 class="text-5xl md:text-7xl font-black tracking-tight text-gray-900 mb-4 leading-tight">
             Le blocus organisé. <br>
             <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 to-blue-700">Le stress en moins.</span>
         </h1>
@@ -64,84 +66,217 @@
             "Par les étudiants, pour les étudiants."
         </p>
         
-        <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
-            <a href="#download" class="flex items-center justify-center w-full sm:w-auto bg-brand-600 hover:bg-brand-500 text-white px-8 py-4 rounded-2xl font-bold text-lg transition shadow-xl shadow-brand-500/30 transform hover:-translate-y-1">
+        <div class="flex justify-center">
+            <a href="#download" class="flex items-center justify-center bg-brand-600 hover:bg-brand-500 text-white px-8 py-4 rounded-2xl font-bold text-lg transition shadow-xl shadow-brand-500/30 transform hover:-translate-y-1">
                 <svg class="w-6 h-6 mr-2 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.04 2.26-.79 3.59-.76 1.56.09 2.88.69 3.73 1.83-3.13 1.95-2.58 6.06.45 7.15-.71 1.63-1.63 3.11-2.85 3.95zm-3.52-13.43c-.05-1.95 1.55-3.66 3.42-3.85.28 2.1-1.68 3.9-3.42 3.85z"/></svg>
                 Télécharger pour Mac
             </a>
         </div>
+    </section>
 
-        <!-- MOCKUP PLACEHOLDER -->
-        <div class="mt-20 relative max-w-5xl mx-auto">
-            <div class="absolute inset-0 bg-gradient-to-b from-brand-100 to-transparent opacity-50 blur-3xl rounded-full"></div>
-            <img src="https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=2000&auto=format&fit=crop" alt="Interface de l'application" class="relative rounded-2xl shadow-2xl border border-gray-200 object-cover h-[500px] w-full opacity-90">
+    <!-- SECTION FONCTIONNALITÉS (Alternée) -->
+    <section id="fonctionnalites" class="bg-white py-24 border-t border-gray-100 overflow-hidden">
+        <div class="container mx-auto px-6">
+            
+            <div class="text-center mb-20">
+                <h2 class="text-3xl md:text-4xl font-black text-gray-900 mb-4">La boîte à outils parfaite.</h2>
+                <p class="text-gray-500 text-lg max-w-2xl mx-auto">Tout ce dont vous avez besoin pour ne rien oublier, réuni dans une interface native et épurée.</p>
+            </div>
+
+            <!-- Feature 1 -->
+            <div class="flex flex-col md:flex-row items-center gap-12 mb-24">
+                <div class="w-full md:w-1/2">
+                    <img src="images/dashboard.png" alt="Tableau de bord Bloc.us" class="rounded-xl shadow-2xl border border-gray-200">
+                </div>
+                <div class="w-full md:w-1/2">
+                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">🎯</div>
+                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Votre tableau de bord intelligent</h3>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Ne vous laissez plus submerger. Le <strong>Focus du jour</strong> filtre votre calendrier et vous montre uniquement les objectifs de la journée.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed">Visualisez d'un clin d'œil votre équilibre d'étude et la répartition de votre temps grâce à nos graphiques interactifs.</p>
+                </div>
+            </div>
+
+            <!-- Feature 2 -->
+            <div class="flex flex-col md:flex-row-reverse items-center gap-12 mb-24">
+                <div class="w-full md:w-1/2">
+                    <img src="images/calendrier.png" alt="Calendrier Bloc.us" class="rounded-xl shadow-2xl border border-gray-200">
+                </div>
+                <div class="w-full md:w-1/2">
+                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">📅</div>
+                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Un planning visuel et intuitif</h3>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Planifiez vos sessions d'étude et vos examens en quelques secondes. Le calendrier interactif vous offre une vue globale sur votre mois.</p>
+                    <ul class="space-y-3 text-gray-600">
+                        <li class="flex items-center"><svg class="w-5 h-5 text-brand-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Code couleur par cours</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-brand-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Ajout d'objectifs précis (ex: Chapitre 5)</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-brand-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Vue dégagée et minimaliste</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 3 -->
+            <div class="flex flex-col md:flex-row items-center gap-12 mb-24">
+                <div class="w-full md:w-1/2">
+                    <img src="images/taches.png" alt="Gestion des tâches" class="rounded-xl shadow-2xl border border-gray-200">
+                </div>
+                <div class="w-full md:w-1/2">
+                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">✅</div>
+                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Découpez la montagne en étapes</h3>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Fini l'angoisse face à un cours énorme. Divisez chaque matière en petites tâches (Slides, Vidéos, TPs).</p>
+                    <p class="text-lg text-gray-600 leading-relaxed">Savourez la satisfaction de voir vos barres de progression se remplir jour après jour vers les 100%.</p>
+                </div>
+            </div>
+
+            <!-- Feature 4 -->
+            <div class="flex flex-col md:flex-row-reverse items-center gap-12 mb-24">
+                <div class="w-full md:w-1/2">
+                    <img src="images/simulateur.png" alt="Simulateur d'examen" class="rounded-xl shadow-2xl border border-gray-200">
+                </div>
+                <div class="w-full md:w-1/2">
+                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">🎓</div>
+                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Simulateur de réussite intégré</h3>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Ne naviguez plus à l'aveugle. Entrez vos notes d'évaluation continue (TPs, Projets) et définissez votre propre objectif (ex: 10/20).</p>
+                    <p class="text-lg text-gray-600 leading-relaxed">L'application calcule instantanément <strong>les points exacts qu'il vous reste à décrocher</strong> le jour de l'examen final.</p>
+                </div>
+            </div>
+
+            <!-- Feature 5 -->
+            <div class="flex flex-col md:flex-row items-center gap-12">
+                <div class="w-full md:w-1/2">
+                    <img src="images/alerte-exam.png" alt="Alerte Examen" class="rounded-xl shadow-2xl border border-gray-200">
+                </div>
+                <div class="w-full md:w-1/2">
+                    <div class="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-red-100">🚨</div>
+                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Mode "Alerte Examen"</h3>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Le jour J, l'application passe en mode alerte pour vous éviter toute panique de dernière minute.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed">Ouvrez l'application et retrouvez instantanément <strong>l'heure exacte et le local</strong> de votre épreuve pour arriver serein et concentré.</p>
+                </div>
+            </div>
+
         </div>
     </section>
 
-    <!-- FONCTIONNALITÉS -->
-    <section id="fonctionnalites" class="bg-white py-24 border-t border-gray-100">
+    <!-- SECTION TEMOIGNAGES -->
+    <section id="temoignages" class="bg-gray-50 py-24 border-t border-gray-200">
         <div class="container mx-auto px-6">
             <div class="text-center mb-16">
-                <h2 class="text-3xl md:text-4xl font-black text-gray-900 mb-4">La boîte à outils parfaite.</h2>
-                <p class="text-gray-500 text-lg max-w-2xl mx-auto">Tout ce dont vous avez besoin pour ne rien oublier, sans la complexité des usines à gaz.</p>
+                <h2 class="text-3xl font-black text-gray-900 mb-4">Approuvé par ceux qui l'utilisent.</h2>
             </div>
 
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-10">
-                <!-- Feature 1 -->
-                <div class="bg-gray-50 p-8 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-                    <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm mb-6 border border-gray-100">🎯</div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-3">Focus du jour</h3>
-                    <p class="text-gray-600 leading-relaxed">Ne vous laissez plus submerger. L'application filtre votre calendrier et vous montre uniquement les objectifs et examens de la journée.</p>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="flex text-yellow-400 mb-4">★★★★★</div>
+                    <p class="text-gray-700 mb-6 italic">"Franchement, cette app a sauvé mon blocus. Fini les fichiers Excel qui plantent ou l'agenda illisible. J'ouvre l'app le matin et je sais exactement ce que je dois faire."</p>
+                    <div>
+                        <p class="font-bold text-gray-900">Thomas</p>
+                        <p class="text-sm text-gray-500">Bac 2 Ingénieur</p>
+                    </div>
                 </div>
-                <!-- Feature 2 -->
-                <div class="bg-gray-50 p-8 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-                    <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm mb-6 border border-gray-100">📊</div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-3">Statistiques avancées</h3>
-                    <p class="text-gray-600 leading-relaxed">Visualisez votre équilibre d'étude avec des graphiques en radar, des diagrammes de temps et suivez votre progression en temps réel.</p>
+
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="flex text-yellow-400 mb-4">★★★★★</div>
+                    <p class="text-gray-700 mb-6 italic">"Le simulateur de points est un game-changer absolu. Savoir qu'il ne me manque que 4/14 à mon examen pour valider le cours enlève un stress énorme !"</p>
+                    <div>
+                        <p class="font-bold text-gray-900">Sarah</p>
+                        <p class="text-sm text-gray-500">Master 1 Droit</p>
+                    </div>
                 </div>
-                <!-- Feature 3 -->
-                <div class="bg-gray-50 p-8 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-                    <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm mb-6 border border-gray-100">🎓</div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-3">Simulateur de points</h3>
-                    <p class="text-gray-600 leading-relaxed">Entrez les notes de vos TP et la cote que vous visez (ex: 14/20). L'app calcule exactement les points à aller chercher à l'examen.</p>
+
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="flex text-yellow-400 mb-4">★★★★★</div>
+                    <p class="text-gray-700 mb-6 italic">"Visuellement super propre et ultra rapide sur Mac. L'organisation est presque devenue un jeu vidéo avec les barres de progression à remplir."</p>
+                    <div>
+                        <p class="font-bold text-gray-900">Maxime</p>
+                        <p class="text-sm text-gray-500">Bac 3 Informatique</p>
+                    </div>
                 </div>
-                <!-- Feature 4 -->
-                <div class="bg-gray-50 p-8 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-                    <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm mb-6 border border-gray-100">📅</div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-3">Planning dynamique</h3>
-                    <p class="text-gray-600 leading-relaxed">Un calendrier interactif avec un code couleur par cours. Planifiez, déplacez et effacez vos sessions d'étude en un seul clic.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION FAQ -->
+    <section id="faq" class="bg-white py-24 border-t border-gray-100">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-black text-gray-900 mb-4">Questions fréquentes</h2>
+                <p class="text-gray-500 text-lg max-w-2xl mx-auto">Tout ce que vous devez savoir avant de commencer votre blocus avec nous.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                <!-- Question 1 -->
+                <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <h4 class="font-bold text-gray-900 mb-2">Est-ce que Bloc.us est vraiment gratuit ?</h4>
+                    <p class="text-gray-600">Oui, à 100%. Il n'y a aucun abonnement, aucune publicité, et aucun achat in-app. C'est un outil créé par un étudiant pour aider les autres étudiants.</p>
                 </div>
-                <!-- Feature 5 -->
-                <div class="bg-gray-50 p-8 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-                    <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm mb-6 border border-gray-100">💾</div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-3">Sauvegarde invisible</h3>
-                    <p class="text-gray-600 leading-relaxed">Pas de bouton "Sauvegarder", pas de compte à créer. Vos données sont enregistrées localement et instantanément sur votre machine.</p>
+                <!-- Question 2 -->
+                <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <h4 class="font-bold text-gray-900 mb-2">Faut-il une connexion internet ?</h4>
+                    <p class="text-gray-600">Non, pas du tout ! Bloc.us fonctionne entièrement hors-ligne. Vous pouvez planifier votre session au fond de la bibliothèque sans aucun réseau Wi-Fi.</p>
                 </div>
-                <!-- Feature 6 -->
-                <div class="bg-gray-50 p-8 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-                    <div class="w-12 h-12 bg-brand-600 rounded-xl flex items-center justify-center text-2xl shadow-sm mb-6 border border-brand-500">✨</div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-3">100% Natif</h3>
-                    <p class="text-gray-600 leading-relaxed">Conçu avec les dernières technologies Apple (SwiftUI) pour une fluidité absolue, une légèreté incroyable et un mode sombre parfait.</p>
+                <!-- Question 3 -->
+                <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <h4 class="font-bold text-gray-900 mb-2">Où sont stockées mes données ?</h4>
+                    <p class="text-gray-600">Uniquement sur le disque dur de votre Mac. Nous n'avons aucun serveur externe. Votre vie privée est garantie et personne ne peut voir vos notes ou votre emploi du temps.</p>
+                </div>
+                <!-- Question 4 -->
+                <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <h4 class="font-bold text-gray-900 mb-2">Est-ce disponible sur Windows ou Android ?</h4>
+                    <p class="text-gray-600">Pour le moment, Bloc.us est une application macOS native développée en SwiftUI. Cependant, le projet étant open-source, une version web/Windows pourrait voir le jour via la communauté !</p>
+                </div>
+                <!-- Question 5 -->
+                <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <h4 class="font-bold text-gray-900 mb-2">Puis-je voir le code source ?</h4>
+                    <p class="text-gray-600">Absolument ! Le code complet de l'application est transparent et disponible sur <a href="https://github.com/Arthvrr/Bloc.us" target="_blank" class="text-brand-500 font-semibold hover:underline">mon dépôt GitHub</a>. N'hésitez pas à y jeter un œil, proposer des améliorations ou laisser une étoile !</p>
+                </div>
+                <!-- Question 6 -->
+                <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <h4 class="font-bold text-gray-900 mb-2">Comment sauvegarder mon planning ?</h4>
+                    <p class="text-gray-600">La sauvegarde est automatique et invisible ("Zéro Clic"). Dès que vous modifiez un élément, l'application enregistre tout instantanément. Vous pouvez fermer l'app l'esprit tranquille.</p>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- FOOTER CTA -->
-    <section id="download" class="bg-gray-900 py-20 text-center">
-        <div class="container mx-auto px-6">
+    <section id="download" class="bg-gray-900 py-20 text-center relative overflow-hidden">
+        <!-- Effet de lueur bleue en fond -->
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-500 rounded-full blur-[120px] opacity-20 pointer-events-none"></div>
+        
+        <div class="container mx-auto px-6 relative z-10">
             <h2 class="text-3xl md:text-4xl font-black text-white mb-6">Prêt à hacker votre session ?</h2>
-            <p class="text-gray-400 mb-10 max-w-xl mx-auto text-lg">Rejoignez les étudiants qui ont déjà repris le contrôle de leur emploi du temps. Téléchargement gratuit et sans publicité.</p>
-            <a href="#" class="inline-block bg-brand-500 hover:bg-brand-400 text-white px-8 py-4 rounded-2xl font-bold text-lg transition shadow-lg shadow-brand-500/30">
+            <p class="text-gray-400 mb-10 max-w-xl mx-auto text-lg">Rejoignez les étudiants qui ont déjà repris le contrôle de leur emploi du temps. Téléchargement gratuit et sans création de compte.</p>
+            <a href="https://github.com/Arthvrr/Bloc.us" target="_blank" class="inline-block bg-brand-500 hover:bg-brand-400 text-white px-8 py-4 rounded-2xl font-bold text-lg transition shadow-lg shadow-brand-500/30">
                 Télécharger Bloc.us (v1.0)
             </a>
+            <p class="text-gray-500 mt-4 text-sm">Nécessite macOS 13.0 ou ultérieur.</p>
         </div>
     </section>
 
-    <!-- FOOTER -->
-    <footer class="bg-white py-8 border-t border-gray-200 text-center">
-        <p class="text-gray-500 font-medium">📚 Bloc.us — Par les étudiants, pour les étudiants.</p>
-        <p class="text-gray-400 text-sm mt-2">© 2026 Bloc.us. Tous droits réservés.</p>
+    <!-- FOOTER AVEC POLITIQUE DE CONFIDENTIALITÉ -->
+    <footer class="bg-white pt-16 pb-8 border-t border-gray-200">
+        <div class="container mx-auto px-6">
+            <!-- Top Footer : Liens et identité -->
+            <div class="flex flex-col md:flex-row justify-between items-center mb-12">
+                <div class="text-center md:text-left mb-6 md:mb-0">
+                    <p class="text-xl font-black text-gray-900 mb-1">🎓 Bloc<span class="text-brand-500">.us</span></p>
+                    <p class="text-gray-500 font-medium">Par les étudiants, pour les étudiants.</p>
+                </div>
+                <div class="flex space-x-6">
+                    <a href="https://github.com/Arthvrr/Bloc.us" target="_blank" class="text-gray-500 hover:text-brand-500 font-medium transition flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path></svg>
+                        Code Source (GitHub)
+                    </a>
+                </div>
+            </div>
+
+            <!-- Bottom Footer : Politique de confidentialité -->
+            <div class="border-t border-gray-100 pt-8 text-center md:text-left text-sm text-gray-400 space-y-4">
+                <p>
+                    <strong class="text-gray-500">Politique de confidentialité & Open Source :</strong> Bloc.us est un utilitaire conçu dans le respect absolu de votre vie privée. L'application fonctionne intégralement en local sur votre appareil. 
+                    <strong>Aucune donnée personnelle</strong>, d'emploi du temps ou de note n'est collectée, analysée ou envoyée vers un serveur distant. Le code est entièrement ouvert et vérifiable par n'importe qui sur GitHub.
+                </p>
+                <p class="text-center mt-6">© 2026 Bloc.us. Tous droits réservés.</p>
+            </div>
+        </div>
     </footer>
 
 </body>
