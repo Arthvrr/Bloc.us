@@ -89,7 +89,7 @@ if st.session_state.courses:
         st.rerun()
 
 # -------------------------
-# CALCULS GLOBAUX (Jours restants)
+# CALCULS GLOBAUX
 # -------------------------
 courses = list(st.session_state.courses.keys())
 today_str = datetime.today().strftime("%Y-%m-%d")
@@ -113,74 +113,125 @@ tab_objs = st.tabs(tabs)
 # 1. GENERAL
 # -------------------------
 with tab_objs[0]:
+    # --- 1. FOCUS DU JOUR (Tout en haut) ---
+    st.header("🎯 Focus du jour")
+    
+    todays_events = st.session_state.schedule.get(today_str, [])
+    
+    if todays_events:
+        for ev in todays_events:
+            c = ev["course"]
+            if c not in st.session_state.courses: continue
+            
+            if ev["type"] == "Examen":
+                st.error(f"### 🚨 EXAMEN AUJOURD'HUI : {c}\nBon courage, donne tout !!")
+                if ev.get("description"):
+                    st.write(f"📝 **Détails :** {ev['description']}")
+            else:
+                study_dates = [d for d, evs in st.session_state.schedule.items() for e in evs if e["course"] == c and e["type"] == "Étude"]
+                study_dates.sort()
+                
+                try:
+                    nth_day = study_dates.index(today_str) + 1
+                except ValueError:
+                    nth_day = 1
+                    
+                total_days = len(study_dates)
+                prog = compute_progress(st.session_state.courses[c]["tasks"])
+                col_color = st.session_state.courses[c]["color"]
+                
+                with st.container(border=True):
+                    st.markdown(f"#### 📚 {c} — *Jour {nth_day} sur {total_days}*")
+                    if ev.get("description"):
+                        st.markdown(f"**🎯 Objectif :** {ev['description']}")
+                    progress_bar(prog, col_color)
+    else:
+        st.success("🎉 Rien de prévu au calendrier aujourd'hui. Profite de ton temps libre pour te ressourcer !")
+
+    st.divider()
+
+    # --- 2. GRAPHIQUES ET VUE D'ENSEMBLE ---
     st.header("Vue d'ensemble de ton blocus")
     
     if courses:
-        progress_data = []
+        # Couleurs associées aux cours pour les graphiques
+        color_map = {c: st.session_state.courses[c]["color"] for c in courses}
+        
+        # --- PREPARATION DES DONNEES ---
+        # Données Radar / Progression
+        radar_data = [{"Cours": c, "Progression (%)": compute_progress(st.session_state.courses[c]["tasks"]) * 100} for c in courses]
+        df_radar = pd.DataFrame(radar_data)
+        
+        # Données Camembert (Temps)
+        pie_data = [{"Cours": c, "Jours alloués": study_days_count[c]["total"]} for c in courses if study_days_count[c]["total"] > 0]
+        df_pie = pd.DataFrame(pie_data)
+        
+        # Données Barres (Points Acquis vs Objectifs)
+        bar_data = []
         for c in courses:
-            prog = compute_progress(st.session_state.courses[c]["tasks"])
-            progress_data.append({
-                "Cours": c, 
-                "Progression (%)": prog * 100, 
-                "Couleur": st.session_state.courses[c]["color"]
-            })
+            data = st.session_state.courses[c]
+            earned = sum(g["score"] for g in data["grading"])
+            tot_graded = sum(g["total"] for g in data["grading"])
+            exam_tot = max(0, 20 - tot_graded)
+            needed = max(0, 10 - earned)
+            needed_from_exam = min(exam_tot, needed)
+            bonus = max(0, exam_tot - needed_from_exam)
             
-        df = pd.DataFrame(progress_data)
-        fig = px.bar(
-            df, x="Cours", y="Progression (%)", 
-            title="Progression par cours",
-            color="Cours",
-            color_discrete_map={row["Cours"]: row["Couleur"] for _, row in df.iterrows()}
+            bar_data.append({"Cours": c, "Type": "Acquis (déjà en poche)", "Points": earned})
+            bar_data.append({"Cours": c, "Type": "À réussir à l'examen (pour 10/20)", "Points": needed_from_exam})
+            bar_data.append({"Cours": c, "Type": "Bonus possible (pour la mention)", "Points": bonus})
+            
+        df_bar = pd.DataFrame(bar_data)
+
+        # --- AFFICHAGE DES GRAPHIQUES ---
+        col_chart1, col_chart2 = st.columns(2)
+        
+        with col_chart1:
+            if len(courses) >= 3:
+                # Graphique Radar (Toile d'araignée) - Il faut min 3 cours pour que ça ressemble à une toile
+                fig_radar = px.line_polar(df_radar, r='Progression (%)', theta='Cours', line_close=True, title="Équilibre d'étude")
+                fig_radar.update_traces(fill='toself', line_color="#4CAF50", fillcolor="rgba(76, 175, 80, 0.5)")
+                fig_radar.update_layout(polar=dict(radialaxis=dict(range=[0, 100])))
+                st.plotly_chart(fig_radar, use_container_width=True)
+            else:
+                # Alternative : un simple graphique en barres si tu as 1 ou 2 cours
+                fig_prog = px.bar(df_radar, x="Cours", y="Progression (%)", color="Cours", color_discrete_map=color_map, title="Équilibre d'étude")
+                fig_prog.update_layout(yaxis=dict(range=[0, 100]))
+                st.plotly_chart(fig_prog, use_container_width=True)
+                
+        with col_chart2:
+            # Diagramme Circulaire (Temps)
+            if not df_pie.empty:
+                fig_pie = px.pie(df_pie, values='Jours alloués', names='Cours', title="Répartition du temps de blocus", color='Cours', color_discrete_map=color_map, hole=0.4)
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("Planifie des jours d'étude dans le calendrier pour voir la répartition de ton temps !")
+
+        # Graphique à barres empilées (Points)
+        fig_bar_pts = px.bar(
+            df_bar, x="Cours", y="Points", color="Type", 
+            title="🎯 Stratégie des points (sur 20)",
+            color_discrete_map={
+                "Acquis (déjà en poche)": "#28a745", 
+                "À réussir à l'examen (pour 10/20)": "#ffc107", 
+                "Bonus possible (pour la mention)": "#e9ecef"
+            }
         )
-        fig.update_layout(yaxis=dict(range=[0, 100]))
-        st.plotly_chart(fig, use_container_width=True)
+        fig_bar_pts.update_layout(barmode='stack', yaxis=dict(range=[0, 20]))
+        st.plotly_chart(fig_bar_pts, use_container_width=True)
 
         st.divider()
 
+        # Détail en barres textuelles
         col1, col2 = st.columns(2)
         for i, c in enumerate(courses):
             target_col = col1 if i % 2 == 0 else col2
             data = st.session_state.courses[c]
             with target_col:
                 st.subheader(c)
-                st.write(f"⏱️ **Jours d'étude prévus :** {study_days_count[c]['total']} jour(s)")
+                st.write(f"⏱️ **Prévus :** {study_days_count[c]['total']} jour(s) | ⏳ **Restants :** {study_days_count[c]['remaining']} jour(s)")
                 progress_bar(compute_progress(data["tasks"]), data["color"])
-                st.write(f"⏳ **Jours restants :** {study_days_count[c]['remaining']} jour(s)")
                 st.markdown("<br>", unsafe_allow_html=True)
-                
-        # --- FOCUS DU JOUR ---
-        st.divider()
-        st.header("🎯 Focus du jour")
-        
-        todays_events = st.session_state.schedule.get(today_str, [])
-        
-        if todays_events:
-            for ev in todays_events:
-                c = ev["course"]
-                if c not in st.session_state.courses: continue
-                
-                if ev["type"] == "Examen":
-                    st.error(f"### 🚨 EXAMEN AUJOURD'HUI : {c}\nBon courage, donne tout !!")
-                else:
-                    # Calculer c'est le combientième jour d'étude pour ce cours
-                    study_dates = [d for d, evs in st.session_state.schedule.items() for e in evs if e["course"] == c and e["type"] == "Étude"]
-                    study_dates.sort()
-                    
-                    try:
-                        nth_day = study_dates.index(today_str) + 1
-                    except ValueError:
-                        nth_day = 1
-                        
-                    total_days = len(study_dates)
-                    prog = compute_progress(st.session_state.courses[c]["tasks"])
-                    col_color = st.session_state.courses[c]["color"]
-                    
-                    with st.container(border=True):
-                        st.markdown(f"#### 📚 {c} — *Jour {nth_day} sur {total_days}*")
-                        progress_bar(prog, col_color)
-        else:
-            st.success("🎉 Rien de prévu au calendrier aujourd'hui. Profite de ton temps libre pour te ressourcer !")
-
     else:
         st.info("Ajoute des cours dans le menu de gauche pour commencer sur Bloc.us !")
 
@@ -199,17 +250,24 @@ with tab_objs[1]:
             st.rerun()
     
     with st.expander("➕ Planifier une session", expanded=True):
-        col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+        col1, col2, col3 = st.columns([2, 2, 3])
         selected_date = col1.date_input("Date")
         event_type = col2.selectbox("Type", ["Étude", "Examen"])
         selected_course = col3.selectbox("Cours concerné", courses if courses else ["Aucun cours"])
         
-        if col4.button("Ajouter", use_container_width=True):
+        # Le nouveau champ Description !
+        desc = st.text_input("Description / Objectifs de la session (ex: Chapitre 5 et 6) - Optionnel")
+        
+        if st.button("Ajouter au calendrier", use_container_width=True):
             if courses:
                 date_str = str(selected_date)
                 if date_str not in st.session_state.schedule:
                     st.session_state.schedule[date_str] = []
-                st.session_state.schedule[date_str].append({"type": event_type, "course": selected_course})
+                st.session_state.schedule[date_str].append({
+                    "type": event_type, 
+                    "course": selected_course,
+                    "description": desc
+                })
                 auto_save()
                 st.rerun()
             else:
@@ -249,6 +307,7 @@ with tab_objs[1]:
                                     <span style="font-weight:{text_weight}; color: black;">{icon} {exam_text}{ev['course']}</span>
                                 </div>
                                 """, unsafe_allow_html=True)
+                                
                 else:
                     with cols[i].container(height=140, border=False):
                         st.empty()
@@ -274,7 +333,6 @@ for tab, cname in zip(tab_objs[2:], courses):
 
         st.header(cname)
         
-        # --- MODIFIER LE NOM OU LA COULEUR ---
         with st.expander("⚙️ Modifier le nom ou la couleur"):
             new_name = st.text_input("Nouveau nom", value=cname, key=f"rn_{cname}")
             new_col = st.color_picker("Nouvelle couleur", value=color, key=f"cp_{cname}")
@@ -287,9 +345,7 @@ for tab, cname in zip(tab_objs[2:], courses):
                     
                 if new_name != cname and new_name.strip() != "":
                     if new_name not in st.session_state.courses:
-                        # Renommer la clé dans le dictionnaire principal
                         st.session_state.courses[new_name] = st.session_state.courses.pop(cname)
-                        # Mettre à jour tous les événements du calendrier avec le nouveau nom
                         for d_str, evs in st.session_state.schedule.items():
                             for e in evs:
                                 if e["course"] == cname:
@@ -352,7 +408,7 @@ for tab, cname in zip(tab_objs[2:], courses):
             for ev in events:
                 if ev["course"] == cname:
                     d_obj = datetime.strptime(d_str, "%Y-%m-%d")
-                    course_dates.append({"date_obj": d_obj, "type": ev["type"]})
+                    course_dates.append({"date_obj": d_obj, "type": ev["type"], "desc": ev.get("description", "")})
         
         course_dates.sort(key=lambda x: x["date_obj"])
         
@@ -361,10 +417,12 @@ for tab, cname in zip(tab_objs[2:], courses):
             for item in course_dates:
                 d = item["date_obj"]
                 date_formatted = f"{d.day} {mois_noms_fr[d.month]} {d.year}"
+                desc_text = f" *(Objectif: {item['desc']})*" if item['desc'] else ""
+                
                 if item["type"] == "Examen":
-                    st.markdown(f"- 🚨 **{date_formatted} (Examen)**")
+                    st.markdown(f"- 🚨 **{date_formatted} (Examen)**{desc_text}")
                 else:
-                    st.markdown(f"- 📚 {date_formatted}")
+                    st.markdown(f"- 📚 {date_formatted}{desc_text}")
         else:
             st.write("- Aucun jour planifié dans le calendrier pour l'instant.")
         
