@@ -25,10 +25,19 @@ struct CourseEvent: Identifiable, Codable {
     var description: String
 }
 
+// Nouveau modèle pour les TODOs
+struct TodoItem: Identifiable, Codable {
+    var id = UUID()
+    var text: String
+    var dueDate: Date?
+    var isDone: Bool = false
+}
+
 struct Course: Codable {
     var colorHex: String
     var tasks: [TaskItem]
     var grading: [GradingItem]
+    var todos: [TodoItem]? // Optionnel pour ne pas casser les anciennes sauvegardes
     var passingGrade: Double
     var fullName: String
     var professor: String
@@ -65,7 +74,6 @@ class AppData: ObservableObject {
         let rawSchedule = UserDefaults.standard.data(forKey: "schedule")
         
         // 2. Seulement APRES avoir tout extrait, on met à jour nos variables.
-        // Comme ça, si la sauvegarde automatique se déclenche, elle n'écrase rien !
         if let data = rawCourses, let decoded = try? JSONDecoder().decode([String: Course].self, from: data) {
             self.courses = decoded
         }
@@ -82,8 +90,8 @@ class AppData: ObservableObject {
         
         var currentEvents = schedule[dStr] ?? []
         currentEvents.append(ev)
-        schedule[dStr] = currentEvents // Force SwiftUI à voir le changement
-        save() // Sauvegarde forcée
+        schedule[dStr] = currentEvents
+        save()
     }
     
     func removeScheduleEvent(dateStr: String, eventId: UUID) {
@@ -94,7 +102,7 @@ class AppData: ObservableObject {
             } else {
                 schedule[dateStr] = currentEvents
             }
-            save() // Sauvegarde forcée
+            save()
         }
     }
     
@@ -123,23 +131,18 @@ class AppData: ObservableObject {
     func currentStudyDayInfo(for course: String) -> (current: Int, total: Int)? {
         var studyDates: [String] = []
         
-        // Récupère toutes les dates où on étudie ce cours
         for (dateStr, events) in schedule {
             if events.contains(where: { $0.course == course && $0.type == "Étude" }) {
                 studyDates.append(dateStr)
             }
         }
         
-        // Trie les dates chronologiquement
         studyDates.sort()
-        
         let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
         
-        // On cherche à quel index correspond aujourd'hui
         if let currentIndex = studyDates.firstIndex(of: todayStr) {
             return (currentIndex + 1, studyDates.count)
         }
-        
         return nil
     }
 }
@@ -257,7 +260,7 @@ struct AddCourseSheet: View {
                 
                 Button("Ajouter") {
                     if !newCourseName.isEmpty && appData.courses[newCourseName] == nil {
-                        let newC = Course(colorHex: newCourseColor.toHex(), tasks: [], grading: [], passingGrade: 10.0, fullName: "", professor: "", examStartTime: "08:30", examEndTime: "10:30", examLocation: "")
+                        let newC = Course(colorHex: newCourseColor.toHex(), tasks: [], grading: [], todos: [], passingGrade: 10.0, fullName: "", professor: "", examStartTime: "08:30", examEndTime: "10:30", examLocation: "")
                         appData.courses[newCourseName] = newC
                         isPresented = false
                     }
@@ -607,8 +610,17 @@ struct CalendarCell: View {
     let dateStr: String
     
     var body: some View {
+        let isToday = dateStr == DateFormatter.yyyyMMdd.string(from: Date())
+        
         VStack(alignment: .trailing, spacing: 2) {
-            Text("\(dayNum)").bold().padding([.top, .trailing], 5)
+            // Mise en évidence du jour actuel
+            Text("\(dayNum)")
+                .bold()
+                .foregroundColor(isToday ? .white : .primary)
+                .padding(6)
+                .background(isToday ? Color.red : Color.clear)
+                .clipShape(Circle())
+                .padding([.top, .trailing], 5)
             
             if let events = appData.schedule[dateStr] {
                 ForEach(events) { ev in
@@ -637,7 +649,7 @@ struct CalendarCell: View {
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topTrailing)
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(6)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(isToday ? Color.red.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: isToday ? 2 : 1))
     }
 }
 
@@ -653,6 +665,11 @@ struct CourseDetailView: View {
     @State private var newGradeName = ""
     @State private var newGradeTotal: Double = 20.0
     @State private var newGradeScore: Double = 0.0
+    
+    // Variables d'état pour la nouvelle TODO
+    @State private var newTodoText = ""
+    @State private var newTodoHasDate = false
+    @State private var newTodoDate = Date()
     
     var body: some View {
         if let course = appData.courses[courseName] {
@@ -814,6 +831,86 @@ struct CourseDetailView: View {
                     } else {
                         Text("🎉 Objectif déjà atteint ou dépassé avec la cotation continue !")
                             .foregroundColor(.green).bold()
+                    }
+                    
+                    Divider()
+                    
+                    // SECTION TODOs
+                    Text("📝 À faire (TODO)").font(.title2).bold()
+                    HStack {
+                        TextField("Nouvelle tâche (ex: Imprimer syllabus)...", text: $newTodoText)
+                            .textFieldStyle(.roundedBorder)
+                        Toggle("Avec date", isOn: $newTodoHasDate)
+                        if newTodoHasDate {
+                            DatePicker("", selection: $newTodoDate)
+                                .labelsHidden()
+                        }
+                        Button("Ajouter") {
+                            if !newTodoText.isEmpty {
+                                var currentTodos = appData.courses[courseName]?.todos ?? []
+                                currentTodos.append(TodoItem(text: newTodoText, dueDate: newTodoHasDate ? newTodoDate : nil))
+                                appData.courses[courseName]?.todos = currentTodos
+                                newTodoText = ""
+                                newTodoHasDate = false
+                            }
+                        }.buttonStyle(.borderedProminent)
+                    }
+                    
+                    let todos = course.todos ?? []
+                    if todos.isEmpty {
+                        Text("Aucune tâche en attente.")
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 5)
+                    } else {
+                        ForEach(Array(todos.enumerated()), id: \.element.id) { index, todo in
+                            HStack {
+                                // Bouton pour cocher/décocher
+                                Button(action: {
+                                    appData.courses[courseName]?.todos?[index].isDone.toggle()
+                                }) {
+                                    Image(systemName: todo.isDone ? "checkmark.circle.fill" : "circle")
+                                        .foregroundColor(todo.isDone ? .green : .gray)
+                                        .font(.title3)
+                                }.buttonStyle(.plain)
+                                
+                                // Champ de texte modifiable barré si fini
+                                TextField("Tâche", text: Binding(
+                                    get: { todo.text },
+                                    set: { appData.courses[courseName]?.todos?[index].text = $0 }
+                                ))
+                                .strikethrough(todo.isDone)
+                                .foregroundColor(todo.isDone ? .secondary : .primary)
+                                
+                                // Gestion de la date (Affichage/Ajout)
+                                if todo.dueDate != nil {
+                                    DatePicker("", selection: Binding(
+                                        get: { todo.dueDate ?? Date() },
+                                        set: { appData.courses[courseName]?.todos?[index].dueDate = $0 }
+                                    ))
+                                    .labelsHidden()
+                                } else {
+                                    Button(action: {
+                                        appData.courses[courseName]?.todos?[index].dueDate = Date()
+                                    }) {
+                                        Image(systemName: "calendar.badge.plus")
+                                            .foregroundColor(.blue)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Ajouter une date")
+                                }
+                                
+                                Spacer()
+                                
+                                // Bouton Supprimer
+                                Button("❌") {
+                                    appData.courses[courseName]?.todos?.remove(at: index)
+                                }.foregroundColor(.red)
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .background(Color(NSColor.controlBackgroundColor))
+                            .cornerRadius(6)
+                        }
                     }
                 }
                 .padding()
