@@ -1,0 +1,31 @@
+======================================================
+🎓 BIENVENUE SUR BLOC.US - INSTRUCTIONS D'INSTALLATION
+======================================================
+
+Merci d'avoir téléchargé Bloc.us ! Voici comment installer l'application sur votre Mac en moins d'une minute :
+
+📦 ÉTAPE 1 : INSTALLATION
+1. Double-cliquez sur le fichier téléchargé (Bloc.us-v1.0.dmg) pour l'ouvrir.
+2. Dans la fenêtre qui apparaît, glissez simplement l'icône "Bloc.us" vers le dossier "Applications" situé juste à côté.
+
+🔓 ÉTAPE 2 : PREMIÈRE OUVERTURE (TRÈS IMPORTANT)
+Bloc.us est une application gratuite développée par un étudiant, sans compte développeur Apple commercial. Par conséquent, macOS affichera un message de sécurité indiquant que l'application ne peut pas être ouverte car "le développeur ne peut pas être vérifié". Pas de panique, c'est une sécurité standard d'Apple !
+
+Pour autoriser l'application (à faire uniquement la toute première fois) :
+1. Essayez d'ouvrir Bloc.us une première fois (un message d'erreur apparaîtra, cliquez sur "OK").
+2. Ouvrez les "Réglages Système" de votre Mac (le logo avec les engrenages).
+3. Dans la barre latérale de gauche, descendez et cliquez sur "Confidentialité et sécurité".
+4. Descendez tout en bas de la page jusqu'à la section "Sécurité".
+5. Vous verrez un message indiquant que l'ouverture de Bloc.us a été bloquée. Cliquez sur le bouton "Ouvrir quand même" juste à côté.
+6. Entrez le mot de passe de votre Mac (ou utilisez Touch ID) pour confirmer.
+
+C'est tout ! Pour toutes les prochaines utilisations, vous pourrez lancer l'application normalement d'un simple clic (via le Launchpad, Spotlight, ou votre dossier Applications).
+
+💡 Astuce : Vos données sont sauvegardées automatiquement et localement sur votre Mac. Vous n'avez besoin d'aucune connexion internet pour organiser votre blocus.
+
+Bon travail, et plein de réussite pour vos examens ! 🚀
+
+-- 
+Bloc.us
+Par les étudiants, pour les étudiants.
+https://github.com/Arthvrr/Bloc.us

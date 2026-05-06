@@ -119,6 +119,29 @@ class AppData: ObservableObject {
         }
         return (total, remaining)
     }
+    
+    func currentStudyDayInfo(for course: String) -> (current: Int, total: Int)? {
+        var studyDates: [String] = []
+        
+        // Récupère toutes les dates où on étudie ce cours
+        for (dateStr, events) in schedule {
+            if events.contains(where: { $0.course == course && $0.type == "Étude" }) {
+                studyDates.append(dateStr)
+            }
+        }
+        
+        // Trie les dates chronologiquement
+        studyDates.sort()
+        
+        let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
+        
+        // On cherche à quel index correspond aujourd'hui
+        if let currentIndex = studyDates.firstIndex(of: todayStr) {
+            return (currentIndex + 1, studyDates.count)
+        }
+        
+        return nil
+    }
 }
 
 // MARK: - EXTENSIONS
@@ -828,5 +851,92 @@ struct CourseDetailView: View {
         let examTotal = max(0, 20 - totalPoints)
         let neededExam = target - earnedPoints
         return (examTotal, max(0, neededExam))
+    }
+}
+
+
+// MARK: - MENU BAR VIEW (Fenêtre du haut)
+struct MenuBarView: View {
+    @ObservedObject var appData: AppData
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            Text("🎯 Focus du jour")
+                .font(.headline)
+                .padding(.bottom, 5)
+            
+            let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
+            let todaysEvents = appData.schedule[todayStr] ?? []
+            
+            if todaysEvents.isEmpty {
+                Text("Rien de prévu aujourd'hui ! Profite de ton repos.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(todaysEvents) { ev in
+                    if let course = appData.courses[ev.course] {
+                        VStack(alignment: .leading, spacing: 8) {
+                            // En-tête : Cours et Description
+                            HStack {
+                                Text("📚 **\(ev.course)**")
+                                Spacer()
+                                if let dayInfo = appData.currentStudyDayInfo(for: ev.course) {
+                                    Text("Jour \(dayInfo.current)/\(dayInfo.total)")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color(hex: course.colorHex).opacity(0.2))
+                                        .foregroundColor(Color(hex: course.colorHex))
+                                        .cornerRadius(4)
+                                }
+                            }
+                            
+                            if !ev.description.isEmpty {
+                                Text("👉 \(ev.description)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            // Barre de progression
+                            CustomProgressBar(progress: appData.computeProgress(for: ev.course), color: Color(hex: course.colorHex), isMain: false)
+                            
+                            // Note requise
+                            let totalPoints = course.grading.reduce(0) { $0 + $1.total }
+                            let earnedPoints = course.grading.reduce(0) { $0 + $1.score }
+                            let examTotal = max(0, 20 - totalPoints)
+                            let neededExam = max(0, course.passingGrade - earnedPoints)
+                            
+                            if examTotal > 0 {
+                                Text("Objectif examen : **\(String(format: "%.1f", neededExam)) / \(String(format: "%.1f", examTotal))**")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("🎉 Cours déjà validé !")
+                                    .font(.caption2)
+                                    .foregroundColor(.green)
+                            }
+                        }
+                        .padding(10)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+            
+            Divider()
+            
+            HStack {
+                Spacer()
+                Button("Quitter Bloc.us") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .frame(width: 320) // Largeur fixe pour faire très "widget macOS"
     }
 }
