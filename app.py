@@ -20,6 +20,14 @@ if "loaded" not in st.session_state:
             data = json.load(f)
             st.session_state.courses = data.get("courses", {})
             st.session_state.schedule = data.get("schedule", {})
+            
+            # Assurer la compatibilité avec les anciens cours sauvegardés
+            for c_name, c_data in st.session_state.courses.items():
+                if "passing_grade" not in c_data: c_data["passing_grade"] = 10.0
+                if "full_name" not in c_data: c_data["full_name"] = ""
+                if "professor" not in c_data: c_data["professor"] = ""
+                if "exam_time" not in c_data: c_data["exam_time"] = "08:30"
+                if "exam_location" not in c_data: c_data["exam_location"] = ""
     else:
         st.session_state.courses = {}
         st.session_state.schedule = {}
@@ -40,11 +48,11 @@ def compute_progress(tasks):
     total_possible = sum(t["total"] for t in tasks)
     return total_done / total_possible if total_possible else 0
 
-def compute_exam_needed(grading):
+def compute_exam_needed(grading, passing_grade=10.0):
     total_points = sum(g["total"] for g in grading)
     earned_points = sum(g["score"] for g in grading)
     exam_total = max(0, 20 - total_points)
-    needed_exam = 10 - earned_points
+    needed_exam = passing_grade - earned_points
     return round(exam_total, 2), round(max(0, needed_exam), 2)
 
 def progress_bar(progress, color):
@@ -68,7 +76,7 @@ def progress_bar(progress, color):
 # -------------------------
 st.sidebar.header("⚙️ Gestion des cours")
 
-new_course = st.sidebar.text_input("Nom du cours")
+new_course = st.sidebar.text_input("Acronyme du cours (ex: LINFO1234)")
 color = st.sidebar.color_picker("Couleur", "#4CAF50")
 
 if st.sidebar.button("Ajouter le cours"):
@@ -76,7 +84,12 @@ if st.sidebar.button("Ajouter le cours"):
         st.session_state.courses[new_course] = {
             "tasks": [],
             "color": color,
-            "grading": []
+            "grading": [],
+            "passing_grade": 10.0,
+            "full_name": "",
+            "professor": "",
+            "exam_time": "08:30",
+            "exam_location": ""
         }
         auto_save()
         st.rerun()
@@ -113,7 +126,6 @@ tab_objs = st.tabs(tabs)
 # 1. GENERAL
 # -------------------------
 with tab_objs[0]:
-    # --- 1. FOCUS DU JOUR (Tout en haut) ---
     st.header("🎯 Focus du jour")
     
     todays_events = st.session_state.schedule.get(today_str, [])
@@ -124,7 +136,15 @@ with tab_objs[0]:
             if c not in st.session_state.courses: continue
             
             if ev["type"] == "Examen":
-                st.error(f"### 🚨 EXAMEN AUJOURD'HUI : {c}\nBon courage, donne tout !!")
+                ex_time = st.session_state.courses[c].get("exam_time", "08:30")
+                ex_loc = st.session_state.courses[c].get("exam_location", "À définir")
+                
+                st.error(f"""
+                ### 🚨 EXAMEN AUJOURD'HUI : {c}
+                **🕒 Heure :** {ex_time} &nbsp;&nbsp;|&nbsp;&nbsp; **📍 Lieu :** {ex_loc if ex_loc else 'Non défini'}
+                
+                Bon courage, donne tout !!
+                """)
                 if ev.get("description"):
                     st.write(f"📝 **Détails :** {ev['description']}")
             else:
@@ -150,71 +170,63 @@ with tab_objs[0]:
 
     st.divider()
 
-    # --- 2. GRAPHIQUES ET VUE D'ENSEMBLE ---
     st.header("Vue d'ensemble de ton blocus")
     
     if courses:
-        # Couleurs associées aux cours pour les graphiques
         color_map = {c: st.session_state.courses[c]["color"] for c in courses}
         
-        # --- PREPARATION DES DONNEES ---
-        # Données Radar / Progression
         radar_data = [{"Cours": c, "Progression (%)": compute_progress(st.session_state.courses[c]["tasks"]) * 100} for c in courses]
         df_radar = pd.DataFrame(radar_data)
         
-        # Données Camembert (Temps)
         pie_data = [{"Cours": c, "Jours alloués": study_days_count[c]["total"]} for c in courses if study_days_count[c]["total"] > 0]
         df_pie = pd.DataFrame(pie_data)
         
-        # Données Barres (Points Acquis vs Objectifs)
         bar_data = []
         for c in courses:
             data = st.session_state.courses[c]
+            passing_target = data.get("passing_grade", 10.0)
+            
             earned = sum(g["score"] for g in data["grading"])
             tot_graded = sum(g["total"] for g in data["grading"])
             exam_tot = max(0, 20 - tot_graded)
-            needed = max(0, 10 - earned)
+            
+            needed = max(0, passing_target - earned)
             needed_from_exam = min(exam_tot, needed)
             bonus = max(0, exam_tot - needed_from_exam)
             
             bar_data.append({"Cours": c, "Type": "Acquis (déjà en poche)", "Points": earned})
-            bar_data.append({"Cours": c, "Type": "À réussir à l'examen (pour 10/20)", "Points": needed_from_exam})
-            bar_data.append({"Cours": c, "Type": "Bonus possible (pour la mention)", "Points": bonus})
+            bar_data.append({"Cours": c, "Type": f"À réussir (Cible: {passing_target}/20)", "Points": needed_from_exam})
+            bar_data.append({"Cours": c, "Type": "Bonus (au-dessus de la cible)", "Points": bonus})
             
         df_bar = pd.DataFrame(bar_data)
 
-        # --- AFFICHAGE DES GRAPHIQUES ---
         col_chart1, col_chart2 = st.columns(2)
         
         with col_chart1:
             if len(courses) >= 3:
-                # Graphique Radar (Toile d'araignée) - Il faut min 3 cours pour que ça ressemble à une toile
                 fig_radar = px.line_polar(df_radar, r='Progression (%)', theta='Cours', line_close=True, title="Équilibre d'étude")
                 fig_radar.update_traces(fill='toself', line_color="#4CAF50", fillcolor="rgba(76, 175, 80, 0.5)")
                 fig_radar.update_layout(polar=dict(radialaxis=dict(range=[0, 100])))
                 st.plotly_chart(fig_radar, use_container_width=True)
             else:
-                # Alternative : un simple graphique en barres si tu as 1 ou 2 cours
                 fig_prog = px.bar(df_radar, x="Cours", y="Progression (%)", color="Cours", color_discrete_map=color_map, title="Équilibre d'étude")
                 fig_prog.update_layout(yaxis=dict(range=[0, 100]))
                 st.plotly_chart(fig_prog, use_container_width=True)
                 
         with col_chart2:
-            # Diagramme Circulaire (Temps)
             if not df_pie.empty:
                 fig_pie = px.pie(df_pie, values='Jours alloués', names='Cours', title="Répartition du temps de blocus", color='Cours', color_discrete_map=color_map, hole=0.4)
                 st.plotly_chart(fig_pie, use_container_width=True)
             else:
                 st.info("Planifie des jours d'étude dans le calendrier pour voir la répartition de ton temps !")
 
-        # Graphique à barres empilées (Points)
         fig_bar_pts = px.bar(
             df_bar, x="Cours", y="Points", color="Type", 
             title="🎯 Stratégie des points (sur 20)",
             color_discrete_map={
                 "Acquis (déjà en poche)": "#28a745", 
-                "À réussir à l'examen (pour 10/20)": "#ffc107", 
-                "Bonus possible (pour la mention)": "#e9ecef"
+                "À réussir (Cible: {passing_target}/20)": "#ffc107",
+                "Bonus (au-dessus de la cible)": "#e9ecef"
             }
         )
         fig_bar_pts.update_layout(barmode='stack', yaxis=dict(range=[0, 20]))
@@ -222,7 +234,6 @@ with tab_objs[0]:
 
         st.divider()
 
-        # Détail en barres textuelles
         col1, col2 = st.columns(2)
         for i, c in enumerate(courses):
             target_col = col1 if i % 2 == 0 else col2
@@ -244,7 +255,7 @@ with tab_objs[1]:
         st.header("Programme d'étude")
     with col_head2:
         st.write("") 
-        if st.button("🗑️ Vider le calendrier", use_container_width=True):
+        if st.button("🗑️ Vider TOUT le calendrier", use_container_width=True):
             st.session_state.schedule = {}
             auto_save()
             st.rerun()
@@ -255,7 +266,6 @@ with tab_objs[1]:
         event_type = col2.selectbox("Type", ["Étude", "Examen"])
         selected_course = col3.selectbox("Cours concerné", courses if courses else ["Aucun cours"])
         
-        # Le nouveau champ Description !
         desc = st.text_input("Description / Objectifs de la session (ex: Chapitre 5 et 6) - Optionnel")
         
         if st.button("Ajouter au calendrier", use_container_width=True):
@@ -272,6 +282,20 @@ with tab_objs[1]:
                 st.rerun()
             else:
                 st.error("Ajoute d'abord un cours !")
+
+    # --- NOUVEAU : VIDER UNE JOURNÉE ---
+    with st.expander("🧹 Nettoyer une journée spécifique"):
+        col_c1, col_c2 = st.columns([3, 1])
+        date_to_clear = col_c1.date_input("Sélectionne la date à vider", key="clear_date")
+        if col_c2.button("Vider ce jour", use_container_width=True):
+            d_str = str(date_to_clear)
+            if d_str in st.session_state.schedule:
+                del st.session_state.schedule[d_str]
+                auto_save()
+                st.success(f"La journée du {d_str} a été vidée !")
+                st.rerun()
+            else:
+                st.warning("Rien n'était prévu à cette date.")
 
     st.divider()
 
@@ -331,18 +355,49 @@ for tab, cname in zip(tab_objs[2:], courses):
         grading = data["grading"]
         color = data["color"]
 
+        # En-tête dynamique du cours
         st.header(cname)
+        if data.get("full_name"):
+            st.markdown(f"**{data['full_name']}**")
+        if data.get("professor"):
+            st.markdown(f"*Professeur : {data['professor']}*")
         
-        with st.expander("⚙️ Modifier le nom ou la couleur"):
-            new_name = st.text_input("Nouveau nom", value=cname, key=f"rn_{cname}")
-            new_col = st.color_picker("Nouvelle couleur", value=color, key=f"cp_{cname}")
+        # --- PARAMÈTRES AVANCÉS DU COURS ---
+        with st.expander("⚙️ Paramètres du cours"):
+            col_p1, col_p2 = st.columns(2)
+            new_name = col_p1.text_input("Acronyme (Nom court)", value=cname, key=f"rn_{cname}")
+            new_full_name = col_p2.text_input("Nom complet du cours", value=data.get("full_name", ""), key=f"fn_{cname}")
             
-            if st.button("Enregistrer", key=f"save_edit_{cname}"):
-                changed = False
-                if new_col != color:
-                    st.session_state.courses[cname]["color"] = new_col
-                    changed = True
-                    
+            col_p3, col_p4, col_p5 = st.columns([1, 2, 2])
+            new_col = col_p3.color_picker("Couleur", value=color, key=f"cp_{cname}")
+            new_prof = col_p4.text_input("Professeur", value=data.get("professor", ""), key=f"pr_{cname}")
+            new_pass = col_p5.number_input("Cote cible (sur 20)", value=float(data.get("passing_grade", 10.0)), step=0.5, key=f"pass_{cname}")
+            
+            st.markdown("**Informations sur l'examen**")
+            col_ex1, col_ex2 = st.columns(2)
+            
+            # Gestion de l'heure d'examen
+            try:
+                ex_t = datetime.strptime(data.get("exam_time", "08:30"), "%H:%M").time()
+            except:
+                ex_t = datetime.strptime("08:30", "%H:%M").time()
+                
+            new_time = col_ex1.time_input("Heure de l'examen", value=ex_t, key=f"ti_{cname}")
+            new_loc = col_ex2.text_input("Lieu / Auditoire", value=data.get("exam_location", ""), key=f"loc_{cname}")
+            
+            if st.button("Enregistrer les modifications", key=f"save_edit_{cname}"):
+                # On met à jour toutes les valeurs dans le dictionnaire
+                st.session_state.courses[cname].update({
+                    "color": new_col,
+                    "full_name": new_full_name,
+                    "professor": new_prof,
+                    "passing_grade": new_pass,
+                    "exam_time": new_time.strftime("%H:%M"),
+                    "exam_location": new_loc
+                })
+                
+                # Gestion si on change l'acronyme principal
+                changed_name = False
                 if new_name != cname and new_name.strip() != "":
                     if new_name not in st.session_state.courses:
                         st.session_state.courses[new_name] = st.session_state.courses.pop(cname)
@@ -350,14 +405,13 @@ for tab, cname in zip(tab_objs[2:], courses):
                             for e in evs:
                                 if e["course"] == cname:
                                     e["course"] = new_name
-                        changed = True
+                        changed_name = True
                     else:
-                        st.error("Un cours avec ce nom existe déjà.")
+                        st.error("Un cours avec cet acronyme existe déjà.")
                         st.stop()
                 
-                if changed:
-                    auto_save()
-                    st.rerun()
+                auto_save()
+                st.rerun()
 
         progress_bar(compute_progress(tasks), color)
 
@@ -458,12 +512,13 @@ for tab, cname in zip(tab_objs[2:], courses):
                 st.rerun()
 
         # -- EXAMEN --
-        exam_total, needed = compute_exam_needed(grading)
+        target_grade = data.get("passing_grade", 10.0)
+        exam_total, needed = compute_exam_needed(grading, target_grade)
         st.divider()
-        st.markdown("### 🧪 Examen")
+        st.markdown(f"### 🧪 Examen (Cible: {target_grade}/20)")
         st.write(f"Examen sur **{exam_total:.2f} points**")
 
         if exam_total > 0:
-            st.markdown(f"### 🎯 Tu dois avoir **{needed:.2f} / {exam_total:.2f}** pour réussir")
+            st.markdown(f"### 🎯 Tu dois avoir **{needed:.2f} / {exam_total:.2f}** pour atteindre ton objectif")
         else:
-            st.success("🎉 Objectif déjà atteint !")
+            st.success("🎉 Objectif déjà atteint ou dépassé avec la cotation continue !")
