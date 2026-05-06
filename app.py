@@ -21,13 +21,16 @@ if "loaded" not in st.session_state:
             st.session_state.courses = data.get("courses", {})
             st.session_state.schedule = data.get("schedule", {})
             
-            # Assurer la compatibilité avec les anciens cours sauvegardés
             for c_name, c_data in st.session_state.courses.items():
                 if "passing_grade" not in c_data: c_data["passing_grade"] = 10.0
                 if "full_name" not in c_data: c_data["full_name"] = ""
                 if "professor" not in c_data: c_data["professor"] = ""
-                if "exam_time" not in c_data: c_data["exam_time"] = "08:30"
                 if "exam_location" not in c_data: c_data["exam_location"] = ""
+                # Retro-compatibilité pour les heures d'examen
+                if "exam_start_time" not in c_data: 
+                    c_data["exam_start_time"] = c_data.pop("exam_time", "08:30")
+                if "exam_end_time" not in c_data: 
+                    c_data["exam_end_time"] = "10:30"
     else:
         st.session_state.courses = {}
         st.session_state.schedule = {}
@@ -55,9 +58,15 @@ def compute_exam_needed(grading, passing_grade=10.0):
     needed_exam = passing_grade - earned_points
     return round(exam_total, 2), round(max(0, needed_exam), 2)
 
-def progress_bar(progress, color):
+# Barre de progression dynamique (is_main permet de la mettre en évidence)
+def progress_bar(progress, color, is_main=False):
+    height = "24px" if is_main else "14px"
+    font_size = "16px" if is_main else "12px"
+    font_weight = "bold" if is_main else "normal"
+    margin_bottom = "15px" if is_main else "10px"
+    
     st.markdown(f"""
-    <div style="background:#eaeaea;border-radius:10px;height:18px;margin-bottom:5px;">
+    <div style="background:#eaeaea;border-radius:10px;height:{height};margin-bottom:5px;">
         <div style="
             background:{color};
             width:{progress*100}%;
@@ -66,7 +75,7 @@ def progress_bar(progress, color):
             transition:0.3s;
         "></div>
     </div>
-    <div style="font-size:12px;color:gray;margin-bottom:10px;">
+    <div style="font-size:{font_size};font-weight:{font_weight};color:#555;margin-bottom:{margin_bottom};">
         {round(progress*100, 2)}% accompli
     </div>
     """, unsafe_allow_html=True)
@@ -88,7 +97,8 @@ if st.sidebar.button("Ajouter le cours"):
             "passing_grade": 10.0,
             "full_name": "",
             "professor": "",
-            "exam_time": "08:30",
+            "exam_start_time": "08:30",
+            "exam_end_time": "10:30",
             "exam_location": ""
         }
         auto_save()
@@ -136,12 +146,13 @@ with tab_objs[0]:
             if c not in st.session_state.courses: continue
             
             if ev["type"] == "Examen":
-                ex_time = st.session_state.courses[c].get("exam_time", "08:30")
+                ex_start = st.session_state.courses[c].get("exam_start_time", "08:30")
+                ex_end = st.session_state.courses[c].get("exam_end_time", "10:30")
                 ex_loc = st.session_state.courses[c].get("exam_location", "À définir")
                 
                 st.error(f"""
                 ### 🚨 EXAMEN AUJOURD'HUI : {c}
-                **🕒 Heure :** {ex_time} &nbsp;&nbsp;|&nbsp;&nbsp; **📍 Lieu :** {ex_loc if ex_loc else 'Non défini'}
+                **🕒 Heure :** {ex_start} - {ex_end} &nbsp;&nbsp;|&nbsp;&nbsp; **📍 Lieu :** {ex_loc if ex_loc else 'Non défini'}
                 
                 Bon courage, donne tout !!
                 """)
@@ -164,7 +175,7 @@ with tab_objs[0]:
                     st.markdown(f"#### 📚 {c} — *Jour {nth_day} sur {total_days}*")
                     if ev.get("description"):
                         st.markdown(f"**🎯 Objectif :** {ev['description']}")
-                    progress_bar(prog, col_color)
+                    progress_bar(prog, col_color, is_main=True)
     else:
         st.success("🎉 Rien de prévu au calendrier aujourd'hui. Profite de ton temps libre pour te ressourcer !")
 
@@ -241,7 +252,7 @@ with tab_objs[0]:
             with target_col:
                 st.subheader(c)
                 st.write(f"⏱️ **Prévus :** {study_days_count[c]['total']} jour(s) | ⏳ **Restants :** {study_days_count[c]['remaining']} jour(s)")
-                progress_bar(compute_progress(data["tasks"]), data["color"])
+                progress_bar(compute_progress(data["tasks"]), data["color"], is_main=True)
                 st.markdown("<br>", unsafe_allow_html=True)
     else:
         st.info("Ajoute des cours dans le menu de gauche pour commencer sur Bloc.us !")
@@ -283,7 +294,6 @@ with tab_objs[1]:
             else:
                 st.error("Ajoute d'abord un cours !")
 
-    # --- NOUVEAU : VIDER UNE JOURNÉE ---
     with st.expander("🧹 Nettoyer une journée spécifique"):
         col_c1, col_c2 = st.columns([3, 1])
         date_to_clear = col_c1.date_input("Sélectionne la date à vider", key="clear_date")
@@ -331,7 +341,6 @@ with tab_objs[1]:
                                     <span style="font-weight:{text_weight}; color: black;">{icon} {exam_text}{ev['course']}</span>
                                 </div>
                                 """, unsafe_allow_html=True)
-                                
                 else:
                     with cols[i].container(height=140, border=False):
                         st.empty()
@@ -355,7 +364,6 @@ for tab, cname in zip(tab_objs[2:], courses):
         grading = data["grading"]
         color = data["color"]
 
-        # En-tête dynamique du cours
         st.header(cname)
         if data.get("full_name"):
             st.markdown(f"**{data['full_name']}**")
@@ -374,29 +382,30 @@ for tab, cname in zip(tab_objs[2:], courses):
             new_pass = col_p5.number_input("Cote cible (sur 20)", value=float(data.get("passing_grade", 10.0)), step=0.5, key=f"pass_{cname}")
             
             st.markdown("**Informations sur l'examen**")
-            col_ex1, col_ex2 = st.columns(2)
+            col_ex1, col_ex2, col_ex3 = st.columns([1, 1, 2])
             
-            # Gestion de l'heure d'examen
             try:
-                ex_t = datetime.strptime(data.get("exam_time", "08:30"), "%H:%M").time()
+                ex_s = datetime.strptime(data.get("exam_start_time", "08:30"), "%H:%M").time()
+                ex_e = datetime.strptime(data.get("exam_end_time", "10:30"), "%H:%M").time()
             except:
-                ex_t = datetime.strptime("08:30", "%H:%M").time()
+                ex_s = datetime.strptime("08:30", "%H:%M").time()
+                ex_e = datetime.strptime("10:30", "%H:%M").time()
                 
-            new_time = col_ex1.time_input("Heure de l'examen", value=ex_t, key=f"ti_{cname}")
-            new_loc = col_ex2.text_input("Lieu / Auditoire", value=data.get("exam_location", ""), key=f"loc_{cname}")
+            new_start = col_ex1.time_input("Début", value=ex_s, key=f"tistart_{cname}")
+            new_end = col_ex2.time_input("Fin", value=ex_e, key=f"tiend_{cname}")
+            new_loc = col_ex3.text_input("Lieu / Auditoire", value=data.get("exam_location", ""), key=f"loc_{cname}")
             
             if st.button("Enregistrer les modifications", key=f"save_edit_{cname}"):
-                # On met à jour toutes les valeurs dans le dictionnaire
                 st.session_state.courses[cname].update({
                     "color": new_col,
                     "full_name": new_full_name,
                     "professor": new_prof,
                     "passing_grade": new_pass,
-                    "exam_time": new_time.strftime("%H:%M"),
+                    "exam_start_time": new_start.strftime("%H:%M"),
+                    "exam_end_time": new_end.strftime("%H:%M"),
                     "exam_location": new_loc
                 })
                 
-                # Gestion si on change l'acronyme principal
                 changed_name = False
                 if new_name != cname and new_name.strip() != "":
                     if new_name not in st.session_state.courses:
@@ -413,7 +422,8 @@ for tab, cname in zip(tab_objs[2:], courses):
                 auto_save()
                 st.rerun()
 
-        progress_bar(compute_progress(tasks), color)
+        # Barre PRINCIPALE du cours mise en évidence
+        progress_bar(compute_progress(tasks), color, is_main=True)
 
         # -- TÂCHES --
         with st.expander("➕ Ajouter tâche"):
@@ -427,7 +437,8 @@ for tab, cname in zip(tab_objs[2:], courses):
 
         for i, t in enumerate(tasks):
             st.markdown(f"#### {t['name']}")
-            progress_bar(t["done"] / t["total"], color)
+            # Barre secondaire plus discrète
+            progress_bar(t["done"] / t["total"], color, is_main=False)
 
             cols = st.columns([2,1,1,1])
             cols[0].write(f"{round(t['done'],2)} / {round(t['total'],2)}")
