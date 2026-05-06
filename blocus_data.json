@@ -1,0 +1,248 @@
+{
+  "courses": {
+    "LINFO2365": {
+      "tasks": [
+        {
+          "name": "Slides",
+          "total": 10.0,
+          "done": 0.0
+        },
+        {
+          "name": "Vid\u00e9os",
+          "total": 10.0,
+          "done": 0.0
+        },
+        {
+          "name": "Quizz",
+          "total": 10.0,
+          "done": 0.0
+        }
+      ],
+      "color": "#e28dda",
+      "grading": [
+        {
+          "name": "Devoirs",
+          "total": 6.0,
+          "score": 5.99
+        },
+        {
+          "name": "Projet",
+          "total": 4.0,
+          "score": 3.0
+        },
+        {
+          "name": "Quizz",
+          "total": 2.0,
+          "score": 0.65
+        }
+      ]
+    },
+    "LINFO2364": {
+      "tasks": [
+        {
+          "name": "Slides",
+          "total": 12.0,
+          "done": 0.0
+        },
+        {
+          "name": "Vid\u00e9os",
+          "total": 12.0,
+          "done": 0.0
+        },
+        {
+          "name": "TPs",
+          "total": 11.0,
+          "done": 0.0
+        },
+        {
+          "name": "Anciens Examens",
+          "total": 4.0,
+          "done": 0.0
+        }
+      ],
+      "color": "#aa8de2",
+      "grading": [
+        {
+          "name": "Projets",
+          "total": 6.0,
+          "score": 0.0
+        }
+      ]
+    },
+    "LINFO2132": {
+      "tasks": [
+        {
+          "name": "Slides",
+          "total": 12.0,
+          "done": 0.0
+        },
+        {
+          "name": "Vid\u00e9os",
+          "total": 12.0,
+          "done": 0.0
+        },
+        {
+          "name": "TPs",
+          "total": 7.0,
+          "done": 0.0
+        },
+        {
+          "name": "Anciens Examens",
+          "total": 4.0,
+          "done": 0.0
+        }
+      ],
+      "color": "#8dd1e2",
+      "grading": [
+        {
+          "name": "Projet",
+          "total": 12.0,
+          "score": 0.0
+        }
+      ]
+    },
+    "LINFO2172": {
+      "tasks": [
+        {
+          "name": "Slides",
+          "total": 10.0,
+          "done": 0.0
+        },
+        {
+          "name": "Vid\u00e9os",
+          "total": 10.0,
+          "done": 0.0
+        },
+        {
+          "name": "Anciens Examens",
+          "total": 4.0,
+          "done": 0.0
+        }
+      ],
+      "color": "#8ee28d",
+      "grading": [
+        {
+          "name": "Projets",
+          "total": 5.0,
+          "score": 0.0
+        }
+      ]
+    }
+  },
+  "schedule": {
+    "2026-06-05": [
+      {
+        "type": "Examen",
+        "course": "LINFO2172"
+      }
+    ],
+    "2026-06-09": [
+      {
+        "type": "Examen",
+        "course": "LINFO2364"
+      }
+    ],
+    "2026-06-12": [
+      {
+        "type": "Examen",
+        "course": "LINFO2132"
+      }
+    ],
+    "2026-06-18": [
+      {
+        "type": "Examen",
+        "course": "LINFO2365"
+      }
+    ],
+    "2026-06-13": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2365"
+      }
+    ],
+    "2026-06-14": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2365"
+      }
+    ],
+    "2026-06-15": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2365"
+      }
+    ],
+    "2026-06-16": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2365"
+      }
+    ],
+    "2026-06-17": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2365"
+      }
+    ],
+    "2026-05-10": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2365"
+      }
+    ],
+    "2026-06-08": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2364"
+      }
+    ],
+    "2026-06-07": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2364"
+      }
+    ],
+    "2026-06-06": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2364"
+      }
+    ],
+    "2026-06-10": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2132"
+      }
+    ],
+    "2026-06-11": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2132"
+      }
+    ],
+    "2026-06-04": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2172"
+      }
+    ],
+    "2026-06-03": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2172"
+      }
+    ],
+    "2026-06-02": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2172"
+      }
+    ],
+    "2026-06-01": [
+      {
+        "type": "\u00c9tude",
+        "course": "LINFO2132"
+      }
+    ]
+  }
+}
