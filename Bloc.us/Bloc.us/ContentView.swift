@@ -3,18 +3,6 @@ import Charts
 import Foundation
 import Combine
 
-// MARK: - FORMATTER PERSONNALISÉ
-extension NumberFormatter {
-    static var decimalFormatter: NumberFormatter {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 0
-        formatter.maximumFractionDigits = 2
-        formatter.decimalSeparator = Locale.current.decimalSeparator ?? "."
-        return formatter
-    }
-}
-
 // MARK: - MODELS
 struct TaskItem: Identifiable, Codable {
     var id = UUID()
@@ -55,7 +43,7 @@ struct Course: Codable {
     var examStartTime: String
     var examEndTime: String
     var examLocation: String
-    var category: String? // NOUVEAU : Optionnel pour la rétrocompatibilité
+    var category: String?
 }
 
 // MARK: - VIEW MODEL (Auto-Save)
@@ -97,11 +85,9 @@ class AppData: ObservableObject {
     func renameCourse(oldName: String, newName: String) {
         guard !newName.isEmpty, oldName != newName, courses[newName] == nil, let course = courses[oldName] else { return }
         
-        // Copie vers la nouvelle clé et supprime l'ancienne
         courses[newName] = course
         courses.removeValue(forKey: oldName)
         
-        // Met à jour le planning
         for (date, events) in schedule {
             var updatedEvents = events
             for i in 0..<updatedEvents.count {
@@ -174,7 +160,6 @@ class AppData: ObservableObject {
         return nil
     }
     
-    // Récupérer les TODOs prévus pour aujourd'hui
     func getTodaysTodos() -> [(courseName: String, todo: TodoItem, colorHex: String, todoIndex: Int)] {
         var result: [(String, TodoItem, String, Int)] = []
         for (cName, course) in courses {
@@ -238,7 +223,6 @@ struct ContentView: View {
                     NavigationLink("📅 Planning", value: "Planning")
                 }
                 
-                // Groupement des cours par catégorie dans la Sidebar
                 let groupedCourses = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })
                 ForEach(groupedCourses.keys.sorted(), id: \.self) { category in
                     Section(category) {
@@ -792,7 +776,7 @@ struct CourseDetailView: View {
                                 }
                                 VStack(alignment: .leading) {
                                     Text("Cote cible (/20)")
-                                    TextField("", value: binding(for: \.passingGrade), formatter: NumberFormatter.decimalFormatter).frame(width: 60)
+                                    TextField("", value: binding(for: \.passingGrade), format: .number).frame(width: 60)
                                 }
                             }
                             
@@ -823,7 +807,7 @@ struct CourseDetailView: View {
                     HStack {
                         TextField("Nom (ex: Chapitre 1)", text: $newTaskName)
                         Text("Total :")
-                        TextField("", value: $newTaskTotal, formatter: NumberFormatter.decimalFormatter).frame(width: 50)
+                        TextField("", value: $newTaskTotal, format: .number).frame(width: 50)
                         Button("Ajouter") {
                             if !newTaskName.isEmpty {
                                 appData.courses[courseName]?.tasks.append(TaskItem(name: newTaskName, total: newTaskTotal, done: 0))
@@ -873,9 +857,9 @@ struct CourseDetailView: View {
                     HStack {
                         TextField("Nom (ex: TP1)", text: $newGradeName)
                         Text("Score :")
-                        TextField("", value: $newGradeScore, formatter: NumberFormatter.decimalFormatter).frame(width: 50)
+                        TextField("", value: $newGradeScore, format: .number).frame(width: 50)
                         Text("Sur :")
-                        TextField("", value: $newGradeTotal, formatter: NumberFormatter.decimalFormatter).frame(width: 50)
+                        TextField("", value: $newGradeTotal, format: .number).frame(width: 50)
                         Button("Ajouter") {
                             if !newGradeName.isEmpty {
                                 appData.courses[courseName]?.grading.append(GradingItem(name: newGradeName, total: newGradeTotal, score: newGradeScore))
@@ -892,7 +876,7 @@ struct CourseDetailView: View {
                             TextField("Score", value: Binding(
                                 get: { grade.score },
                                 set: { appData.courses[courseName]?.grading[index].score = $0 }
-                            ), formatter: NumberFormatter.decimalFormatter)
+                            ), format: .number)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 60)
                             
@@ -914,7 +898,8 @@ struct CourseDetailView: View {
                     Text("🧪 Examen (Cible: \(String(format: "%.2f", course.passingGrade))/20)").font(.title2).bold()
                     Text("Examen sur **\(String(format: "%.2f", examTotal)) points**")
                     if examTotal > 0 {
-                        Text("🎯 Tu dois avoir **\(String(format: "%.2f", needed)) / \(String(format: "%.2f", examTotal))** pour atteindre ton objectif")
+                        let percentage = (needed / examTotal) * 100
+                        Text("🎯 Tu dois avoir **\(String(format: "%.2f", needed)) / \(String(format: "%.2f", examTotal))** pour atteindre ton objectif (\(String(format: "%.1f", percentage))%)")
                     } else {
                         Text("🎉 Objectif déjà atteint ou dépassé avec la cotation continue !")
                             .foregroundColor(.green).bold()
@@ -1085,7 +1070,8 @@ struct MenuBarView: View {
                                 let neededExam = max(0, course.passingGrade - earnedPoints)
                                 
                                 if examTotal > 0 {
-                                    Text("Objectif examen : **\(String(format: "%.2f", neededExam)) / \(String(format: "%.2f", examTotal))**")
+                                    let percentage = (neededExam / examTotal) * 100
+                                    Text("Objectif examen : **\(String(format: "%.2f", neededExam)) / \(String(format: "%.2f", examTotal))** (\(String(format: "%.1f", percentage))%)")
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
                                 } else {
@@ -1155,6 +1141,6 @@ struct MenuBarView: View {
             }
             .padding()
         }
-        .frame(width: 330, height: 480) // Fixe la taille de la bulle Menu Bar
+        .frame(width: 330, height: 480)
     }
 }
