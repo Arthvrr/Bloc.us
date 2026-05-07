@@ -3,6 +3,18 @@ import Charts
 import Foundation
 import Combine
 
+// MARK: - FORMATTER PERSONNALISÉ
+extension NumberFormatter {
+    static var decimalFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        formatter.decimalSeparator = Locale.current.decimalSeparator ?? "."
+        return formatter
+    }
+}
+
 // MARK: - MODELS
 struct TaskItem: Identifiable, Codable {
     var id = UUID()
@@ -20,12 +32,11 @@ struct GradingItem: Identifiable, Codable {
 
 struct CourseEvent: Identifiable, Codable {
     var id = UUID()
-    var type: String // "Étude" ou "Examen"
+    var type: String
     var course: String
     var description: String
 }
 
-// Nouveau modèle pour les TODOs
 struct TodoItem: Identifiable, Codable {
     var id = UUID()
     var text: String
@@ -37,13 +48,14 @@ struct Course: Codable {
     var colorHex: String
     var tasks: [TaskItem]
     var grading: [GradingItem]
-    var todos: [TodoItem]? // Optionnel pour ne pas casser les anciennes sauvegardes
+    var todos: [TodoItem]?
     var passingGrade: Double
     var fullName: String
     var professor: String
     var examStartTime: String
     var examEndTime: String
     var examLocation: String
+    var category: String? // NOUVEAU : Optionnel pour la rétrocompatibilité
 }
 
 // MARK: - VIEW MODEL (Auto-Save)
@@ -69,11 +81,9 @@ class AppData: ObservableObject {
     }
     
     func load() {
-        // 1. On extrait d'abord toutes les données de la mémoire de l'appareil
         let rawCourses = UserDefaults.standard.data(forKey: "courses")
         let rawSchedule = UserDefaults.standard.data(forKey: "schedule")
         
-        // 2. Seulement APRES avoir tout extrait, on met à jour nos variables.
         if let data = rawCourses, let decoded = try? JSONDecoder().decode([String: Course].self, from: data) {
             self.courses = decoded
         }
@@ -81,6 +91,27 @@ class AppData: ObservableObject {
         if let data = rawSchedule, let decoded = try? JSONDecoder().decode([String: [CourseEvent]].self, from: data) {
             self.schedule = decoded
         }
+    }
+    
+    // --- GESTION DU NOM DU COURS ---
+    func renameCourse(oldName: String, newName: String) {
+        guard !newName.isEmpty, oldName != newName, courses[newName] == nil, let course = courses[oldName] else { return }
+        
+        // Copie vers la nouvelle clé et supprime l'ancienne
+        courses[newName] = course
+        courses.removeValue(forKey: oldName)
+        
+        // Met à jour le planning
+        for (date, events) in schedule {
+            var updatedEvents = events
+            for i in 0..<updatedEvents.count {
+                if updatedEvents[i].course == oldName {
+                    updatedEvents[i].course = newName
+                }
+            }
+            schedule[date] = updatedEvents
+        }
+        save()
     }
     
     // --- GESTION ROBUSTE DU CALENDRIER ---
@@ -130,20 +161,32 @@ class AppData: ObservableObject {
     
     func currentStudyDayInfo(for course: String) -> (current: Int, total: Int)? {
         var studyDates: [String] = []
-        
         for (dateStr, events) in schedule {
             if events.contains(where: { $0.course == course && $0.type == "Étude" }) {
                 studyDates.append(dateStr)
             }
         }
-        
         studyDates.sort()
         let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
-        
         if let currentIndex = studyDates.firstIndex(of: todayStr) {
             return (currentIndex + 1, studyDates.count)
         }
         return nil
+    }
+    
+    // Récupérer les TODOs prévus pour aujourd'hui
+    func getTodaysTodos() -> [(courseName: String, todo: TodoItem, colorHex: String, todoIndex: Int)] {
+        var result: [(String, TodoItem, String, Int)] = []
+        for (cName, course) in courses {
+            if let todos = course.todos {
+                for (index, todo) in todos.enumerated() {
+                    if let date = todo.dueDate, Calendar.current.isDateInToday(date), !todo.isDone {
+                        result.append((cName, todo, course.colorHex, index))
+                    }
+                }
+            }
+        }
+        return result
     }
 }
 
@@ -195,24 +238,23 @@ struct ContentView: View {
                     NavigationLink("📅 Planning", value: "Planning")
                 }
                 
-                Section("Cours") {
-                    ForEach(appData.courses.keys.sorted(), id: \.self) { cName in
-                        NavigationLink("📚 \(cName)", value: cName)
+                // Groupement des cours par catégorie dans la Sidebar
+                let groupedCourses = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })
+                ForEach(groupedCourses.keys.sorted(), id: \.self) { category in
+                    Section(category) {
+                        ForEach(groupedCourses[category]!.sorted(), id: \.self) { cName in
+                            NavigationLink("📚 \(cName)", value: cName)
+                        }
                     }
                 }
             }
             .listStyle(.sidebar)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button(action: {
-                        isShowingAddCourse = true
-                    }) {
-                        Image(systemName: "plus")
-                    }
+                    Button(action: { isShowingAddCourse = true }) { Image(systemName: "plus") }
                     .help("Ajouter un nouveau cours")
                 }
             }
-            
         } detail: {
             if selection == "Général" {
                 GeneralView(appData: appData)
@@ -238,29 +280,27 @@ struct AddCourseSheet: View {
     @Binding var isPresented: Bool
     
     @State private var newCourseName = ""
+    @State private var newCourseCategory = "Général"
     @State private var newCourseColor = Color.green
     
     var body: some View {
         VStack(spacing: 20) {
-            Text("Ajouter un nouveau cours")
-                .font(.headline)
+            Text("Ajouter un nouveau cours").font(.headline)
             
             TextField("Acronyme (ex: LINFO2365)", text: $newCourseName)
+                .textFieldStyle(.roundedBorder)
+            
+            TextField("Catégorie (ex: Tronc commun)", text: $newCourseCategory)
                 .textFieldStyle(.roundedBorder)
             
             ColorPicker("Couleur du cours", selection: $newCourseColor)
             
             HStack {
-                Button("Annuler") {
-                    isPresented = false
-                }
-                .keyboardShortcut(.cancelAction)
-                
+                Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction)
                 Spacer()
-                
                 Button("Ajouter") {
                     if !newCourseName.isEmpty && appData.courses[newCourseName] == nil {
-                        let newC = Course(colorHex: newCourseColor.toHex(), tasks: [], grading: [], todos: [], passingGrade: 10.0, fullName: "", professor: "", examStartTime: "08:30", examEndTime: "10:30", examLocation: "")
+                        let newC = Course(colorHex: newCourseColor.toHex(), tasks: [], grading: [], todos: [], passingGrade: 10.0, fullName: "", professor: "", examStartTime: "08:30", examEndTime: "10:30", examLocation: "", category: newCourseCategory)
                         appData.courses[newCourseName] = newC
                         isPresented = false
                     }
@@ -297,7 +337,7 @@ struct CustomProgressBar: View {
             }
             .frame(height: isMain ? 24 : 14)
             
-            Text("\(String(format: "%.1f", progress * 100))% accompli")
+            Text("\(String(format: "%.2f", progress * 100)) % accompli")
                 .font(isMain ? .body : .caption)
                 .fontWeight(isMain ? .bold : .regular)
                 .foregroundColor(.secondary)
@@ -358,6 +398,29 @@ struct GeneralView: View {
                             }
                         }
                     }
+                    
+                    // TODOs DU JOUR
+                    let todaysTodos = appData.getTodaysTodos()
+                    if !todaysTodos.isEmpty {
+                        Text("📝 À faire aujourd'hui").font(.headline).foregroundColor(.orange).padding(.top, 10)
+                        ForEach(todaysTodos, id: \.todo.id) { item in
+                            HStack {
+                                Button(action: {
+                                    appData.courses[item.courseName]?.todos?[item.todoIndex].isDone = true
+                                    appData.save()
+                                }) {
+                                    Image(systemName: "circle").font(.title3)
+                                }.buttonStyle(.plain).foregroundColor(.orange)
+                                
+                                Text(item.todo.text).font(.body)
+                                Text("(\(item.courseName))").font(.caption).foregroundColor(Color(hex: item.colorHex))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.orange.opacity(0.1))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.5), lineWidth: 1))
+                        }
+                    }
                 }
                 
                 Divider()
@@ -369,7 +432,6 @@ struct GeneralView: View {
                 } else {
                     // GRAPHIQUES
                     HStack(alignment: .top, spacing: 20) {
-                        // Équilibre
                         VStack {
                             Text("Équilibre d'étude par cours").font(.headline)
                             Chart {
@@ -386,7 +448,6 @@ struct GeneralView: View {
                         }
                         .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(10)
                         
-                        // Répartition temps
                         VStack {
                             Text("Répartition du temps alloué par cours").font(.headline)
                             if #available(macOS 14.0, *) {
@@ -496,7 +557,6 @@ struct PlanningView: View {
                     }.buttonStyle(.bordered)
                 }
                 
-                // ADD FORM
                 GroupBox("➕ Planifier une session") {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading) {
@@ -532,7 +592,6 @@ struct PlanningView: View {
                 
                 Divider()
                 
-                // CALENDARS (Current & Next Month)
                 let today = Date()
                 let calendar = Calendar.current
                 let currentMonth = calendar.component(.month, from: today)
@@ -613,7 +672,6 @@ struct CalendarCell: View {
         let isToday = dateStr == DateFormatter.yyyyMMdd.string(from: Date())
         
         VStack(alignment: .trailing, spacing: 2) {
-            // Mise en évidence du jour actuel
             Text("\(dayNum)")
                 .bold()
                 .foregroundColor(isToday ? .white : .primary)
@@ -666,7 +724,8 @@ struct CourseDetailView: View {
     @State private var newGradeTotal: Double = 20.0
     @State private var newGradeScore: Double = 0.0
     
-    // Variables d'état pour la nouvelle TODO
+    @State private var editedAcronym = ""
+    
     @State private var newTodoText = ""
     @State private var newTodoHasDate = false
     @State private var newTodoDate = Date()
@@ -692,6 +751,22 @@ struct CourseDetailView: View {
                     
                     DisclosureGroup("⚙️ Paramètres du cours") {
                         VStack(alignment: .leading, spacing: 15) {
+                            
+                            HStack(alignment: .bottom) {
+                                VStack(alignment: .leading) {
+                                    Text("Acronyme (Nom du cours)")
+                                    TextField("Ex: LINFO", text: $editedAcronym)
+                                        .textFieldStyle(.roundedBorder)
+                                }
+                                if editedAcronym != courseName && !editedAcronym.isEmpty {
+                                    Button("Renommer") {
+                                        appData.renameCourse(oldName: courseName, newName: editedAcronym)
+                                        selection = editedAcronym
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+                            }
+                            
                             HStack {
                                 VStack(alignment: .leading) {
                                     Text("Nom complet")
@@ -705,12 +780,19 @@ struct CourseDetailView: View {
                             
                             HStack {
                                 VStack(alignment: .leading) {
+                                    Text("Catégorie (Section)")
+                                    TextField("Ex: Tronc commun", text: Binding(
+                                        get: { course.category ?? "Général" },
+                                        set: { appData.courses[courseName]?.category = $0.isEmpty ? nil : $0 }
+                                    ))
+                                }
+                                VStack(alignment: .leading) {
                                     Text("Couleur")
                                     ColorPicker("", selection: Binding(get: { Color(hex: course.colorHex) }, set: { appData.courses[courseName]?.colorHex = $0.toHex() })).labelsHidden()
                                 }
                                 VStack(alignment: .leading) {
                                     Text("Cote cible (/20)")
-                                    TextField("", value: binding(for: \.passingGrade), formatter: NumberFormatter()).frame(width: 60)
+                                    TextField("", value: binding(for: \.passingGrade), formatter: NumberFormatter.decimalFormatter).frame(width: 60)
                                 }
                             }
                             
@@ -732,6 +814,8 @@ struct CourseDetailView: View {
                         }
                         .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(8)
                     }
+                    .onAppear { editedAcronym = courseName }
+                    .onChange(of: courseName) { newValue in editedAcronym = newValue }
                     
                     Divider()
                     
@@ -739,7 +823,7 @@ struct CourseDetailView: View {
                     HStack {
                         TextField("Nom (ex: Chapitre 1)", text: $newTaskName)
                         Text("Total :")
-                        TextField("", value: $newTaskTotal, formatter: NumberFormatter()).frame(width: 50)
+                        TextField("", value: $newTaskTotal, formatter: NumberFormatter.decimalFormatter).frame(width: 50)
                         Button("Ajouter") {
                             if !newTaskName.isEmpty {
                                 appData.courses[courseName]?.tasks.append(TaskItem(name: newTaskName, total: newTaskTotal, done: 0))
@@ -753,7 +837,7 @@ struct CourseDetailView: View {
                             Text(task.name).font(.headline)
                             CustomProgressBar(progress: task.total > 0 ? task.done / task.total : 0, color: Color(hex: course.colorHex), isMain: false)
                             HStack {
-                                Text("\(String(format: "%.1f", task.done)) / \(String(format: "%.1f", task.total))")
+                                Text("\(String(format: "%.2f", task.done)) / \(String(format: "%.2f", task.total))")
                                 Spacer()
                                 Button("➖") {
                                     if task.done > 0 { appData.courses[courseName]?.tasks[index].done -= 1 }
@@ -788,10 +872,10 @@ struct CourseDetailView: View {
                     Text("🎓 Cotation").font(.title2).bold()
                     HStack {
                         TextField("Nom (ex: TP1)", text: $newGradeName)
-                        Text("Sur :")
-                        TextField("", value: $newGradeTotal, formatter: NumberFormatter()).frame(width: 50)
                         Text("Score :")
-                        TextField("", value: $newGradeScore, formatter: NumberFormatter()).frame(width: 50)
+                        TextField("", value: $newGradeScore, formatter: NumberFormatter.decimalFormatter).frame(width: 50)
+                        Text("Sur :")
+                        TextField("", value: $newGradeTotal, formatter: NumberFormatter.decimalFormatter).frame(width: 50)
                         Button("Ajouter") {
                             if !newGradeName.isEmpty {
                                 appData.courses[courseName]?.grading.append(GradingItem(name: newGradeName, total: newGradeTotal, score: newGradeScore))
@@ -802,17 +886,20 @@ struct CourseDetailView: View {
                     
                     ForEach(Array(course.grading.enumerated()), id: \.element.id) { index, grade in
                         HStack {
-                            Text("**\(grade.name)** (\(String(format: "%.1f", grade.total)) pts)")
+                            Text("**\(grade.name)**")
                                 .frame(width: 150, alignment: .leading)
                             
                             TextField("Score", value: Binding(
                                 get: { grade.score },
                                 set: { appData.courses[courseName]?.grading[index].score = $0 }
-                            ), formatter: NumberFormatter())
+                            ), formatter: NumberFormatter.decimalFormatter)
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 80)
+                            .frame(width: 60)
                             
-                            Text("\(String(format: "%.1f", (grade.total > 0 ? (grade.score / grade.total) : 0) * 100)) %")
+                            Text("/ \(String(format: "%.2f", grade.total)) pts")
+                                .frame(width: 80, alignment: .leading)
+                            
+                            Text("\(String(format: "%.2f", (grade.total > 0 ? (grade.score / grade.total) : 0) * 100)) %")
                                 .frame(width: 80, alignment: .trailing)
                             
                             Spacer()
@@ -824,10 +911,10 @@ struct CourseDetailView: View {
                     
                     Divider()
                     let (examTotal, needed) = computeExamTarget(grading: course.grading, target: course.passingGrade)
-                    Text("🧪 Examen (Cible: \(String(format: "%.1f", course.passingGrade))/20)").font(.title2).bold()
-                    Text("Examen sur **\(String(format: "%.1f", examTotal)) points**")
+                    Text("🧪 Examen (Cible: \(String(format: "%.2f", course.passingGrade))/20)").font(.title2).bold()
+                    Text("Examen sur **\(String(format: "%.2f", examTotal)) points**")
                     if examTotal > 0 {
-                        Text("### 🎯 Tu dois avoir **\(String(format: "%.1f", needed)) / \(String(format: "%.1f", examTotal))** pour atteindre ton objectif")
+                        Text("🎯 Tu dois avoir **\(String(format: "%.2f", needed)) / \(String(format: "%.2f", examTotal))** pour atteindre ton objectif")
                     } else {
                         Text("🎉 Objectif déjà atteint ou dépassé avec la cotation continue !")
                             .foregroundColor(.green).bold()
@@ -864,7 +951,6 @@ struct CourseDetailView: View {
                     } else {
                         ForEach(Array(todos.enumerated()), id: \.element.id) { index, todo in
                             HStack {
-                                // Bouton pour cocher/décocher
                                 Button(action: {
                                     appData.courses[courseName]?.todos?[index].isDone.toggle()
                                 }) {
@@ -873,7 +959,6 @@ struct CourseDetailView: View {
                                         .font(.title3)
                                 }.buttonStyle(.plain)
                                 
-                                // Champ de texte modifiable barré si fini
                                 TextField("Tâche", text: Binding(
                                     get: { todo.text },
                                     set: { appData.courses[courseName]?.todos?[index].text = $0 }
@@ -881,7 +966,6 @@ struct CourseDetailView: View {
                                 .strikethrough(todo.isDone)
                                 .foregroundColor(todo.isDone ? .secondary : .primary)
                                 
-                                // Gestion de la date (Affichage/Ajout)
                                 if todo.dueDate != nil {
                                     DatePicker("", selection: Binding(
                                         get: { todo.dueDate ?? Date() },
@@ -901,7 +985,6 @@ struct CourseDetailView: View {
                                 
                                 Spacer()
                                 
-                                // Bouton Supprimer
                                 Button("❌") {
                                     appData.courses[courseName]?.todos?.remove(at: index)
                                 }.foregroundColor(.red)
@@ -951,89 +1034,127 @@ struct CourseDetailView: View {
     }
 }
 
-
 // MARK: - MENU BAR VIEW (Fenêtre du haut)
 struct MenuBarView: View {
     @ObservedObject var appData: AppData
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            Text("🎯 Focus du jour")
-                .font(.headline)
-                .padding(.bottom, 5)
-            
-            let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
-            let todaysEvents = appData.schedule[todayStr] ?? []
-            
-            if todaysEvents.isEmpty {
-                Text("Rien de prévu aujourd'hui ! Profite de ton repos.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            } else {
-                ForEach(todaysEvents) { ev in
-                    if let course = appData.courses[ev.course] {
-                        VStack(alignment: .leading, spacing: 8) {
-                            // En-tête : Cours et Description
-                            HStack {
-                                Text("📚 **\(ev.course)**")
-                                Spacer()
-                                if let dayInfo = appData.currentStudyDayInfo(for: ev.course) {
-                                    Text("Jour \(dayInfo.current)/\(dayInfo.total)")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 15) {
+                Text("🎯 Focus du jour")
+                    .font(.headline)
+                    .padding(.bottom, 5)
+                
+                let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
+                let todaysEvents = appData.schedule[todayStr] ?? []
+                
+                if todaysEvents.isEmpty {
+                    Text("Rien de prévu aujourd'hui ! Profite de ton repos.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(todaysEvents) { ev in
+                        if let course = appData.courses[ev.course] {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("📚 **\(ev.course)**")
+                                    Spacer()
+                                    if let dayInfo = appData.currentStudyDayInfo(for: ev.course) {
+                                        Text("Jour \(dayInfo.current)/\(dayInfo.total)")
+                                            .font(.caption)
+                                            .fontWeight(.bold)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color(hex: course.colorHex).opacity(0.2))
+                                            .foregroundColor(Color(hex: course.colorHex))
+                                            .cornerRadius(4)
+                                    }
+                                }
+                                
+                                if !ev.description.isEmpty {
+                                    Text("👉 \(ev.description)")
                                         .font(.caption)
-                                        .fontWeight(.bold)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color(hex: course.colorHex).opacity(0.2))
-                                        .foregroundColor(Color(hex: course.colorHex))
-                                        .cornerRadius(4)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                CustomProgressBar(progress: appData.computeProgress(for: ev.course), color: Color(hex: course.colorHex), isMain: false)
+                                
+                                let totalPoints = course.grading.reduce(0) { $0 + $1.total }
+                                let earnedPoints = course.grading.reduce(0) { $0 + $1.score }
+                                let examTotal = max(0, 20 - totalPoints)
+                                let neededExam = max(0, course.passingGrade - earnedPoints)
+                                
+                                if examTotal > 0 {
+                                    Text("Objectif examen : **\(String(format: "%.2f", neededExam)) / \(String(format: "%.2f", examTotal))**")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("🎉 Cours déjà validé !")
+                                        .font(.caption2)
+                                        .foregroundColor(.green)
                                 }
                             }
-                            
-                            if !ev.description.isEmpty {
-                                Text("👉 \(ev.description)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            // Barre de progression
-                            CustomProgressBar(progress: appData.computeProgress(for: ev.course), color: Color(hex: course.colorHex), isMain: false)
-                            
-                            // Note requise
-                            let totalPoints = course.grading.reduce(0) { $0 + $1.total }
-                            let earnedPoints = course.grading.reduce(0) { $0 + $1.score }
-                            let examTotal = max(0, 20 - totalPoints)
-                            let neededExam = max(0, course.passingGrade - earnedPoints)
-                            
-                            if examTotal > 0 {
-                                Text("Objectif examen : **\(String(format: "%.1f", neededExam)) / \(String(format: "%.1f", examTotal))**")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("🎉 Cours déjà validé !")
-                                    .font(.caption2)
-                                    .foregroundColor(.green)
-                            }
+                            .padding(10)
+                            .background(Color(NSColor.controlBackgroundColor))
+                            .cornerRadius(8)
                         }
-                        .padding(10)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(8)
                     }
                 }
-            }
-            
-            Divider()
-            
-            HStack {
-                Spacer()
-                Button("Quitter Bloc.us") {
-                    NSApplication.shared.terminate(nil)
+                
+                // TODOs DU JOUR DANS LE WIDGET
+                let todaysTodos = appData.getTodaysTodos()
+                if !todaysTodos.isEmpty {
+                    Divider()
+                    Text("📝 À faire aujourd'hui").font(.headline).foregroundColor(.orange)
+                    ForEach(todaysTodos, id: \.todo.id) { item in
+                        HStack {
+                            Button(action: {
+                                appData.courses[item.courseName]?.todos?[item.todoIndex].isDone = true
+                                appData.save()
+                            }) {
+                                Image(systemName: "circle")
+                            }.buttonStyle(.plain)
+                            
+                            VStack(alignment: .leading) {
+                                Text(item.todo.text).font(.subheadline)
+                                Text(item.courseName).font(.caption2).foregroundColor(Color(hex: item.colorHex))
+                            }
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .foregroundColor(.secondary)
+                
+                // SOUS-SECTIONS DE TOUS LES COURS
+                Divider()
+                Text("📚 Progression par section").font(.headline).padding(.top, 5)
+                let grouped = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })
+                ForEach(grouped.keys.sorted(), id: \.self) { cat in
+                    Text(cat).font(.caption).foregroundColor(.secondary).padding(.top, 5)
+                    ForEach(grouped[cat]!.sorted(), id: \.self) { cName in
+                        let course = appData.courses[cName]!
+                        HStack {
+                            Text(cName).font(.subheadline)
+                            Spacer()
+                            Text("\(String(format: "%.2f", appData.computeProgress(for: cName) * 100)) %")
+                                .font(.caption2)
+                        }
+                        CustomProgressBar(progress: appData.computeProgress(for: cName), color: Color(hex: course.colorHex), isMain: false)
+                    }
+                }
+                
+                Divider()
+                
+                HStack {
+                    Spacer()
+                    Button("Quitter Bloc.us") {
+                        NSApplication.shared.terminate(nil)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                }
             }
+            .padding()
         }
-        .padding()
-        .frame(width: 320) // Largeur fixe pour faire très "widget macOS"
+        .frame(width: 330, height: 480) // Fixe la taille de la bulle Menu Bar
     }
 }
