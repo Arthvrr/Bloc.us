@@ -2,6 +2,19 @@ import SwiftUI
 import Charts
 import Foundation
 import Combine
+import UserNotifications // NOUVEAU : Pour les notifications
+
+// MARK: - FORMATTER PERSONNALISÉ
+extension NumberFormatter {
+    static var decimalFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        formatter.decimalSeparator = Locale.current.decimalSeparator ?? "."
+        return formatter
+    }
+}
 
 // MARK: - MODELS
 struct TaskItem: Identifiable, Codable {
@@ -32,11 +45,19 @@ struct TodoItem: Identifiable, Codable {
     var isDone: Bool = false
 }
 
+// NOUVEAU : Modèle pour les liens rapides
+struct LinkItem: Identifiable, Codable {
+    var id = UUID()
+    var name: String
+    var url: String
+}
+
 struct Course: Codable {
     var colorHex: String
     var tasks: [TaskItem]
     var grading: [GradingItem]
     var todos: [TodoItem]?
+    var links: [LinkItem]? // NOUVEAU : Optionnel pour la rétrocompatibilité
     var passingGrade: Double
     var fullName: String
     var professor: String
@@ -46,7 +67,7 @@ struct Course: Codable {
     var category: String?
 }
 
-// MARK: - VIEW MODEL (Auto-Save)
+// MARK: - VIEW MODEL (Auto-Save & Notifications)
 class AppData: ObservableObject {
     @Published var courses: [String: Course] = [:] {
         didSet { save() }
@@ -55,8 +76,13 @@ class AppData: ObservableObject {
         didSet { save() }
     }
     
+    // NOUVEAU : Suivi des flammes (Streaks)
+    @Published var currentStreak: Int = 0
+    @Published var lastProgressDate: String = ""
+    
     init() {
         load()
+        requestNotificationPermission()
     }
     
     func save() {
@@ -66,6 +92,10 @@ class AppData: ObservableObject {
         if let encodedSchedule = try? JSONEncoder().encode(schedule) {
             UserDefaults.standard.set(encodedSchedule, forKey: "schedule")
         }
+        UserDefaults.standard.set(currentStreak, forKey: "currentStreak")
+        UserDefaults.standard.set(lastProgressDate, forKey: "lastProgressDate")
+        
+        updateNotifications() // Met à jour les notifs à chaque changement
     }
     
     func load() {
@@ -75,19 +105,111 @@ class AppData: ObservableObject {
         if let data = rawCourses, let decoded = try? JSONDecoder().decode([String: Course].self, from: data) {
             self.courses = decoded
         }
-        
         if let data = rawSchedule, let decoded = try? JSONDecoder().decode([String: [CourseEvent]].self, from: data) {
             self.schedule = decoded
         }
+        
+        self.currentStreak = UserDefaults.standard.integer(forKey: "currentStreak")
+        self.lastProgressDate = UserDefaults.standard.string(forKey: "lastProgressDate") ?? ""
+    }
+    
+    // --- GAMIFICATION : FLAMMES ---
+    func registerActivity() {
+        let today = DateFormatter.yyyyMMdd.string(from: Date())
+        if lastProgressDate == today { return } // Déjà comptabilisé aujourd'hui
+        
+        let yesterday = DateFormatter.yyyyMMdd.string(from: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
+        
+        if lastProgressDate == yesterday {
+            currentStreak += 1 // Continue la série
+        } else {
+            currentStreak = 1 // Recommence une série
+        }
+        
+        lastProgressDate = today
+        save()
+    }
+    
+    func getDisplayStreak() -> Int {
+        let today = DateFormatter.yyyyMMdd.string(from: Date())
+        let yesterday = DateFormatter.yyyyMMdd.string(from: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
+        // Si l'utilisateur a été actif aujourd'hui ou hier, on affiche la série en cours
+        if lastProgressDate == today || lastProgressDate == yesterday {
+            return currentStreak
+        }
+        return 0 // Sinon la série est perdue (0)
+    }
+    
+    // --- NOTIFICATIONS LOCALES ---
+    func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if granted {
+                print("Permission aux notifications accordée")
+            }
+        }
+    }
+    
+    func updateNotifications() {
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        
+        // 1. Notif du matin (9h00) pour les jours d'étude & Veille d'examen (20h00)
+        for (dateStr, events) in schedule {
+            if let date = DateFormatter.yyyyMMdd.date(from: dateStr) {
+                
+                // Si on a de l'étude ce jour-là
+                if events.contains(where: { $0.type == "Étude" }) {
+                    scheduleNotification(title: "🎯 Focus du jour", body: "Tu as des sessions d'étude prévues aujourd'hui ! Bon blocus.", date: date, hour: 9, minute: 0, id: "study-\(dateStr)")
+                }
+                
+                // Si on a un examen ce jour-là
+                let exams = events.filter { $0.type == "Examen" }
+                for exam in exams {
+                    if let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: date) {
+                        scheduleNotification(title: "🎒 Prêt pour l'examen ?", body: "Demain tu as examen de \(exam.course). Prépare tes affaires !", date: dayBefore, hour: 20, minute: 0, id: "exam-\(exam.id.uuidString)")
+                    }
+                }
+            }
+        }
+        
+        // 2. Notif pour les dates limites de TODO (1 heure avant)
+        for (cName, course) in courses {
+            if let todos = course.todos {
+                for todo in todos {
+                    if let dueDate = todo.dueDate, !todo.isDone {
+                        if let notifDate = Calendar.current.date(byAdding: .hour, value: -1, to: dueDate), notifDate > Date() {
+                            let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: notifDate)
+                            scheduleNotification(title: "⏳ Tâche à terminer bientôt", body: "\(todo.text) (\(cName))", components: comps, id: "todo-\(todo.id.uuidString)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func scheduleNotification(title: String, body: String, date: Date, hour: Int, minute: Int, id: String) {
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        components.hour = hour
+        components.minute = minute
+        if let targetDate = Calendar.current.date(from: components), targetDate > Date() {
+            scheduleNotification(title: title, body: body, components: components, id: id)
+        }
+    }
+    
+    private func scheduleNotification(title: String, body: String, components: DateComponents, id: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
     }
     
     // --- GESTION DU NOM DU COURS ---
     func renameCourse(oldName: String, newName: String) {
         guard !newName.isEmpty, oldName != newName, courses[newName] == nil, let course = courses[oldName] else { return }
-        
         courses[newName] = course
         courses.removeValue(forKey: oldName)
-        
         for (date, events) in schedule {
             var updatedEvents = events
             for i in 0..<updatedEvents.count {
@@ -104,7 +226,6 @@ class AppData: ObservableObject {
     func addScheduleEvent(date: Date, type: String, course: String, description: String) {
         let dStr = DateFormatter.yyyyMMdd.string(from: date)
         let ev = CourseEvent(type: type, course: course, description: description)
-        
         var currentEvents = schedule[dStr] ?? []
         currentEvents.append(ev)
         schedule[dStr] = currentEvents
@@ -114,11 +235,8 @@ class AppData: ObservableObject {
     func removeScheduleEvent(dateStr: String, eventId: UUID) {
         if var currentEvents = schedule[dateStr] {
             currentEvents.removeAll(where: { $0.id == eventId })
-            if currentEvents.isEmpty {
-                schedule.removeValue(forKey: dateStr)
-            } else {
-                schedule[dateStr] = currentEvents
-            }
+            if currentEvents.isEmpty { schedule.removeValue(forKey: dateStr) }
+            else { schedule[dateStr] = currentEvents }
             save()
         }
     }
@@ -135,7 +253,6 @@ class AppData: ObservableObject {
         let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
         var total = 0
         var remaining = 0
-        
         for (dateStr, events) in schedule {
             for ev in events where ev.course == course && ev.type == "Étude" {
                 total += 1
@@ -148,15 +265,11 @@ class AppData: ObservableObject {
     func currentStudyDayInfo(for course: String) -> (current: Int, total: Int)? {
         var studyDates: [String] = []
         for (dateStr, events) in schedule {
-            if events.contains(where: { $0.course == course && $0.type == "Étude" }) {
-                studyDates.append(dateStr)
-            }
+            if events.contains(where: { $0.course == course && $0.type == "Étude" }) { studyDates.append(dateStr) }
         }
         studyDates.sort()
         let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
-        if let currentIndex = studyDates.firstIndex(of: todayStr) {
-            return (currentIndex + 1, studyDates.count)
-        }
+        if let currentIndex = studyDates.firstIndex(of: todayStr) { return (currentIndex + 1, studyDates.count) }
         return nil
     }
     
@@ -284,7 +397,7 @@ struct AddCourseSheet: View {
                 Spacer()
                 Button("Ajouter") {
                     if !newCourseName.isEmpty && appData.courses[newCourseName] == nil {
-                        let newC = Course(colorHex: newCourseColor.toHex(), tasks: [], grading: [], todos: [], passingGrade: 10.0, fullName: "", professor: "", examStartTime: "08:30", examEndTime: "10:30", examLocation: "", category: newCourseCategory)
+                        let newC = Course(colorHex: newCourseColor.toHex(), tasks: [], grading: [], todos: [], links: [], passingGrade: 10.0, fullName: "", professor: "", examStartTime: "08:30", examEndTime: "10:30", examLocation: "", category: newCourseCategory)
                         appData.courses[newCourseName] = newC
                         isPresented = false
                     }
@@ -343,9 +456,25 @@ struct GeneralView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
-                Text("📚 Bloc.us - Ton partenaire de blocus")
-                    .font(.largeTitle)
-                    .bold()
+                HStack {
+                    Text("📚 Bloc.us - Ton partenaire de blocus")
+                        .font(.largeTitle)
+                        .bold()
+                    Spacer()
+                    // AFFICHAGE DES FLAMMES
+                    if appData.getDisplayStreak() > 0 {
+                        HStack(spacing: 4) {
+                            Text("🔥")
+                            Text("\(appData.getDisplayStreak()) jours")
+                                .fontWeight(.bold)
+                                .foregroundColor(.orange)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.2))
+                        .cornerRadius(20)
+                    }
+                }
                 
                 // FOCUS DU JOUR
                 VStack(alignment: .leading, spacing: 10) {
@@ -391,7 +520,7 @@ struct GeneralView: View {
                             HStack {
                                 Button(action: {
                                     appData.courses[item.courseName]?.todos?[item.todoIndex].isDone = true
-                                    appData.save()
+                                    appData.registerActivity() // Ajoute l'activité du jour
                                 }) {
                                     Image(systemName: "circle").font(.title3)
                                 }.buttonStyle(.plain).foregroundColor(.orange)
@@ -714,6 +843,9 @@ struct CourseDetailView: View {
     @State private var newTodoHasDate = false
     @State private var newTodoDate = Date()
     
+    @State private var newLinkName = ""
+    @State private var newLinkUrl = ""
+    
     var body: some View {
         if let course = appData.courses[courseName] {
             ScrollView {
@@ -801,6 +933,62 @@ struct CourseDetailView: View {
                     .onAppear { editedAcronym = courseName }
                     .onChange(of: courseName) { newValue in editedAcronym = newValue }
                     
+                    // NOUVEAU : SECTION LIENS RAPIDES
+                    DisclosureGroup("🔗 Liens Rapides") {
+                        VStack(alignment: .leading) {
+                            HStack {
+                                TextField("Nom (ex: Dossier Drive)", text: $newLinkName)
+                                    .textFieldStyle(.roundedBorder)
+                                TextField("Lien URL", text: $newLinkUrl)
+                                    .textFieldStyle(.roundedBorder)
+                                Button("Ajouter") {
+                                    if !newLinkName.isEmpty && !newLinkUrl.isEmpty {
+                                        var safeUrl = newLinkUrl
+                                        if !safeUrl.lowercased().hasPrefix("http") {
+                                            safeUrl = "https://" + safeUrl
+                                        }
+                                        var currentLinks = appData.courses[courseName]?.links ?? []
+                                        currentLinks.append(LinkItem(name: newLinkName, url: safeUrl))
+                                        appData.courses[courseName]?.links = currentLinks
+                                        newLinkName = ""
+                                        newLinkUrl = ""
+                                    }
+                                }.buttonStyle(.borderedProminent)
+                            }
+                            
+                            let links = course.links ?? []
+                            if links.isEmpty {
+                                Text("Aucun lien ajouté.")
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 5)
+                            } else {
+                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                                    ForEach(Array(links.enumerated()), id: \.element.id) { index, link in
+                                        HStack {
+                                            Image(systemName: "link")
+                                                .foregroundColor(.blue)
+                                            if let url = URL(string: link.url) {
+                                                Link(link.name, destination: url)
+                                                    .foregroundColor(.blue)
+                                                    .lineLimit(1)
+                                            } else {
+                                                Text(link.name)
+                                            }
+                                            Spacer()
+                                            Button("❌") {
+                                                appData.courses[courseName]?.links?.remove(at: index)
+                                            }.foregroundColor(.red).buttonStyle(.plain)
+                                        }
+                                        .padding()
+                                        .background(Color(NSColor.controlBackgroundColor))
+                                        .cornerRadius(8)
+                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                                    }
+                                }.padding(.top, 10)
+                            }
+                        }
+                    }
+                    
                     Divider()
                     
                     Text("Tâches").font(.title2).bold()
@@ -827,7 +1015,10 @@ struct CourseDetailView: View {
                                     if task.done > 0 { appData.courses[courseName]?.tasks[index].done -= 1 }
                                 }
                                 Button("➕") {
-                                    if task.done < task.total { appData.courses[courseName]?.tasks[index].done += 1 }
+                                    if task.done < task.total {
+                                        appData.courses[courseName]?.tasks[index].done += 1
+                                        appData.registerActivity() // Flamme !
+                                    }
                                 }
                                 Button("❌") {
                                     appData.courses[courseName]?.tasks.remove(at: index)
@@ -938,6 +1129,9 @@ struct CourseDetailView: View {
                             HStack {
                                 Button(action: {
                                     appData.courses[courseName]?.todos?[index].isDone.toggle()
+                                    if appData.courses[courseName]?.todos?[index].isDone == true {
+                                        appData.registerActivity() // Flamme !
+                                    }
                                 }) {
                                     Image(systemName: todo.isDone ? "checkmark.circle.fill" : "circle")
                                         .foregroundColor(todo.isDone ? .green : .gray)
@@ -1026,9 +1220,22 @@ struct MenuBarView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 15) {
-                Text("🎯 Focus du jour")
-                    .font(.headline)
-                    .padding(.bottom, 5)
+                HStack {
+                    Text("🎯 Focus du jour")
+                        .font(.headline)
+                    Spacer()
+                    if appData.getDisplayStreak() > 0 {
+                        Text("🔥 \(appData.getDisplayStreak())j")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.2))
+                            .cornerRadius(10)
+                    }
+                }
+                .padding(.bottom, 5)
                 
                 let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
                 let todaysEvents = appData.schedule[todayStr] ?? []
@@ -1087,7 +1294,6 @@ struct MenuBarView: View {
                     }
                 }
                 
-                // TODOs DU JOUR DANS LE WIDGET
                 let todaysTodos = appData.getTodaysTodos()
                 if !todaysTodos.isEmpty {
                     Divider()
@@ -1096,7 +1302,7 @@ struct MenuBarView: View {
                         HStack {
                             Button(action: {
                                 appData.courses[item.courseName]?.todos?[item.todoIndex].isDone = true
-                                appData.save()
+                                appData.registerActivity()
                             }) {
                                 Image(systemName: "circle")
                             }.buttonStyle(.plain)
@@ -1109,7 +1315,6 @@ struct MenuBarView: View {
                     }
                 }
                 
-                // SOUS-SECTIONS DE TOUS LES COURS
                 Divider()
                 Text("📚 Progression par section").font(.headline).padding(.top, 5)
                 let grouped = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })

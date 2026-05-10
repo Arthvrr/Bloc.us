@@ -1,9 +1,1 @@
 - lancer app ios aussi (pas que macos)
-- ajouter notifs tel et mac
-
-- arrondir à 2 chiffres après la virgule et pas arrondir sans virgule !
-- changer le nom condensé du cours
-- inverser case "sur" et "score"
-- réordonner le listing de cours dans le panel en haut à droite, et créer des sous-sections de cours (exemple : tronc commun)
-- afficher dans le focus du jour les todos qui sont mises aujourdhui en date (et aussi dans l'icone de l'app dans la barre de menu mac)
-- enlever les 3 ### dans la phrase "tu dois avoir : "
