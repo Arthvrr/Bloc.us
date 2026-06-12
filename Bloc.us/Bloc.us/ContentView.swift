@@ -78,7 +78,6 @@ struct ParcoursCourse: Identifiable, Codable {
     var semester: String // "Q1" ou "Q2"
 }
 
-// NOUVEAU : Modèle pour les résultats d'examens par session
 struct ExamResult: Identifiable, Codable {
     var id = UUID()
     var sessionName: String // "Janvier", "Juin", "Août"
@@ -87,16 +86,14 @@ struct ExamResult: Identifiable, Codable {
     var attempt: Int
 }
 
-struct AcademicYear: Identifiable, Codable, Hashable {
+// CORRECTION : Suppression de Hashable/Equatable pour forcer SwiftUI à observer les changements profonds
+struct AcademicYear: Identifiable, Codable {
     var id = UUID()
     var yearString: String
     var level: String
     var school: String
     var courses: [ParcoursCourse]
-    var exams: [ExamResult]? // Optionnel pour la rétrocompatibilité
-    
-    static func == (lhs: AcademicYear, rhs: AcademicYear) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    var exams: [ExamResult]?
 }
 
 // MARK: - VIEW MODEL (Auto-Save & Notifications)
@@ -448,10 +445,11 @@ struct ParcoursMainView: View {
             
             Divider()
             
+            // CORRECTION : Extraction par ID pour forcer le rafraîchissement
             if selectedTab == "Dashboard" {
                 ParcoursDashboardView(appData: appData)
-            } else if let year = appData.academicYears.first(where: { $0.id.uuidString == selectedTab }) {
-                AcademicYearDetailView(appData: appData, year: year, selectedTab: $selectedTab)
+            } else if let yearId = UUID(uuidString: selectedTab) {
+                AcademicYearDetailView(appData: appData, yearId: yearId, selectedTab: $selectedTab)
             }
             
             Spacer()
@@ -514,105 +512,158 @@ struct ParcoursDashboardView: View {
 // MARK: - VUE DÉTAILLÉE D'UNE ANNÉE
 struct AcademicYearDetailView: View {
     @ObservedObject var appData: AppData
-    let year: AcademicYear
+    let yearId: UUID // CORRECTION : On passe l'ID au lieu de l'objet complet
     @Binding var selectedTab: String
     
     @State private var isShowingAddCourse = false
     @State private var isShowingAddExam = false
     
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 25) {
-                
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(year.level).font(.title).bold()
-                        Text("\(year.school) • \(year.yearString)").font(.title3).foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Button(action: {
-                        appData.academicYears.removeAll(where: { $0.id == year.id })
-                        selectedTab = "Dashboard"
-                    }) {
-                        Image(systemName: "trash").foregroundColor(.red)
-                        Text("Supprimer l'année").foregroundColor(.red)
-                    }.buttonStyle(.bordered)
-                }
-                
-                let totalCredits = year.courses.reduce(0) { $0 + $1.credits }
-                let weightedGPA = totalCredits > 0 ? year.courses.reduce(0) { $0 + ($1.grade * $1.credits) } / totalCredits : 0
-                let avgAttempts = year.courses.isEmpty ? 0 : Double(year.courses.reduce(0) { $0 + $1.attempts }) / Double(year.courses.count)
-                
-                HStack(spacing: 15) {
-                    RecapCard(title: "Crédits Totaux", value: String(format: "%.1f", totalCredits), color: .green)
-                    RecapCard(title: "Moyenne Pondérée", value: String(format: "%.2f", weightedGPA), color: .blue)
-                    RecapCard(title: "Moyenne Tentatives", value: String(format: "%.1f", avgAttempts), color: .orange)
-                    RecapCard(title: "Total Cours", value: "\(year.courses.count)", color: .purple)
-                }
-                
-                Divider()
-                
-                // --- TABLEAUX Q1 ET Q2 ---
-                HStack {
-                    Text("Cours de l'année").font(.title2).bold()
-                    Spacer()
-                    Button(action: { isShowingAddCourse = true }) {
-                        HStack { Image(systemName: "plus.circle.fill"); Text("Ajouter un cours") }
-                    }.buttonStyle(.borderedProminent)
-                }
-                
-                let q1Courses = year.courses.filter { $0.semester == "Q1" }
-                let q2Courses = year.courses.filter { $0.semester == "Q2" }
-                
-                SemesterTableView(appData: appData, yearId: year.id, title: "Premier Quadrimestre (Q1)", courses: q1Courses)
-                SemesterTableView(appData: appData, yearId: year.id, title: "Deuxième Quadrimestre (Q2)", courses: q2Courses)
-                Text("💡 Astuce : Double-cliquez sur un cours pour le modifier.").font(.caption).foregroundColor(.secondary)
-                
-                Divider()
-                
-                // --- SESSIONS D'EXAMENS ---
-                HStack {
-                    Text("Sessions d'Examens").font(.title2).bold()
-                    Spacer()
-                    Button(action: { isShowingAddExam = true }) {
-                        HStack { Image(systemName: "plus.circle.fill"); Text("Ajouter un résultat") }
-                    }.buttonStyle(.borderedProminent)
-                }
-                
-                let janExams = (year.exams ?? []).filter { $0.sessionName == "Janvier" }
-                let junExams = (year.exams ?? []).filter { $0.sessionName == "Juin" }
-                let augExams = (year.exams ?? []).filter { $0.sessionName == "Août" }
-                
-                ExamSessionTableView(appData: appData, yearId: year.id, title: "Session de Janvier", exams: janExams)
-                ExamSessionTableView(appData: appData, yearId: year.id, title: "Session de Juin", exams: junExams)
-                ExamSessionTableView(appData: appData, yearId: year.id, title: "Session d'Août", exams: augExams)
-                
-                Divider()
-                
-                // --- GRAPHIQUES EXCEL-LIKE ---
-                if !year.courses.isEmpty || !(year.exams ?? []).isEmpty {
-                    Text("Analyses de l'année").font(.title2).bold()
+        // CORRECTION : On lit l'objet en direct depuis appData
+        if let year = appData.academicYears.first(where: { $0.id == yearId }) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 25) {
                     
-                    HStack(alignment: .top, spacing: 20) {
-                        // Graphique des sessions d'examens
-                        if !(year.exams ?? []).isEmpty {
-                            VStack(alignment: .leading) {
-                                Text("Moyennes par Session d'Examens").font(.headline)
-                                let sessions = ["Janvier", "Juin", "Août"]
-                                Chart {
-                                    ForEach(sessions, id: \.self) { session in
-                                        let sessionExams = (year.exams ?? []).filter { $0.sessionName == session }
-                                        let avg = sessionExams.isEmpty ? 0 : sessionExams.reduce(0) { $0 + $1.grade } / Double(sessionExams.count)
-                                        
-                                        if !sessionExams.isEmpty {
-                                            BarMark(
-                                                x: .value("Session", session),
-                                                y: .value("Moyenne", avg)
-                                            )
-                                            .foregroundStyle(Color.orange)
-                                            .annotation(position: .top) {
-                                                Text(String(format: "%.2f", avg)).font(.caption)
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(year.level).font(.title).bold()
+                            Text("\(year.school) • \(year.yearString)").font(.title3).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button(action: {
+                            appData.academicYears.removeAll(where: { $0.id == year.id })
+                            selectedTab = "Dashboard"
+                        }) {
+                            Image(systemName: "trash").foregroundColor(.red)
+                            Text("Supprimer l'année").foregroundColor(.red)
+                        }.buttonStyle(.bordered)
+                    }
+                    
+                    let totalCredits = year.courses.reduce(0) { $0 + $1.credits }
+                    let weightedGPA = totalCredits > 0 ? year.courses.reduce(0) { $0 + ($1.grade * $1.credits) } / totalCredits : 0
+                    let avgAttempts = year.courses.isEmpty ? 0 : Double(year.courses.reduce(0) { $0 + $1.attempts }) / Double(year.courses.count)
+                    
+                    HStack(spacing: 15) {
+                        RecapCard(title: "Crédits Totaux", value: String(format: "%.1f", totalCredits), color: .green)
+                        RecapCard(title: "Moyenne Pondérée", value: String(format: "%.2f", weightedGPA), color: .blue)
+                        RecapCard(title: "Moyenne Tentatives", value: String(format: "%.1f", avgAttempts), color: .orange)
+                        RecapCard(title: "Total Cours", value: "\(year.courses.count)", color: .purple)
+                    }
+                    
+                    Divider()
+                    
+                    // --- TABLEAUX Q1 ET Q2 ---
+                    HStack {
+                        Text("Cours de l'année").font(.title2).bold()
+                        Spacer()
+                        Button(action: { isShowingAddCourse = true }) {
+                            HStack { Image(systemName: "plus.circle.fill"); Text("Ajouter un cours") }
+                        }.buttonStyle(.borderedProminent)
+                    }
+                    
+                    let q1Courses = year.courses.filter { $0.semester == "Q1" }
+                    let q2Courses = year.courses.filter { $0.semester == "Q2" }
+                    
+                    SemesterTableView(appData: appData, yearId: year.id, title: "Premier Quadrimestre (Q1)", courses: q1Courses)
+                    SemesterTableView(appData: appData, yearId: year.id, title: "Deuxième Quadrimestre (Q2)", courses: q2Courses)
+                    Text("💡 Astuce : Double-cliquez sur un cours pour le modifier.").font(.caption).foregroundColor(.secondary)
+                    
+                    Divider()
+                    
+                    // --- SESSIONS D'EXAMENS ---
+                    HStack {
+                        Text("Sessions d'Examens").font(.title2).bold()
+                        Spacer()
+                        Button(action: { isShowingAddExam = true }) {
+                            HStack { Image(systemName: "plus.circle.fill"); Text("Ajouter un résultat") }
+                        }.buttonStyle(.borderedProminent)
+                    }
+                    
+                    let janExams = (year.exams ?? []).filter { $0.sessionName == "Janvier" }
+                    let junExams = (year.exams ?? []).filter { $0.sessionName == "Juin" }
+                    let augExams = (year.exams ?? []).filter { $0.sessionName == "Août" }
+                    
+                    ExamSessionTableView(appData: appData, yearId: year.id, title: "Session de Janvier", exams: janExams)
+                    ExamSessionTableView(appData: appData, yearId: year.id, title: "Session de Juin", exams: junExams)
+                    ExamSessionTableView(appData: appData, yearId: year.id, title: "Session d'Août", exams: augExams)
+                    
+                    Divider()
+                    
+                    // --- GRAPHIQUES EXCEL-LIKE ---
+                    if !year.courses.isEmpty || !(year.exams ?? []).isEmpty {
+                        Text("Analyses de l'année").font(.title2).bold()
+                        
+                        HStack(alignment: .top, spacing: 20) {
+                            // Graphique des sessions d'examens
+                            if !(year.exams ?? []).isEmpty {
+                                VStack(alignment: .leading) {
+                                    Text("Moyennes par Session d'Examens").font(.headline)
+                                    let sessions = ["Janvier", "Juin", "Août"]
+                                    Chart {
+                                        ForEach(sessions, id: \.self) { session in
+                                            let sessionExams = (year.exams ?? []).filter { $0.sessionName == session }
+                                            let avg = sessionExams.isEmpty ? 0 : sessionExams.reduce(0) { $0 + $1.grade } / Double(sessionExams.count)
+                                            
+                                            if !sessionExams.isEmpty {
+                                                BarMark(
+                                                    x: .value("Session", session),
+                                                    y: .value("Moyenne", avg)
+                                                )
+                                                .foregroundStyle(Color.orange)
+                                                .annotation(position: .top) {
+                                                    Text(String(format: "%.2f", avg)).font(.caption)
+                                                }
                                             }
+                                        }
+                                    }
+                                    .chartYScale(domain: 0...20)
+                                    .frame(height: 250)
+                                }
+                                .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                            }
+                            
+                            // Graphique de répartition des crédits
+                            if !year.courses.isEmpty {
+                                VStack(alignment: .leading) {
+                                    Text("Répartition des Crédits (Catégorie)").font(.headline)
+                                    let groupedByCat = Dictionary(grouping: year.courses, by: { $0.category })
+                                    if #available(macOS 14.0, *) {
+                                        Chart {
+                                            ForEach(groupedByCat.keys.sorted(), id: \.self) { cat in
+                                                let catCreds = groupedByCat[cat]!.reduce(0) { $0 + $1.credits }
+                                                SectorMark(
+                                                    angle: .value("Crédits", catCreds),
+                                                    innerRadius: .ratio(0.5),
+                                                    angularInset: 1.5
+                                                )
+                                                .foregroundStyle(by: .value("Catégorie", cat))
+                                                .annotation(position: .overlay) {
+                                                    Text(String(format: "%.0f", catCreds)).font(.caption).bold().foregroundColor(.white)
+                                                }
+                                            }
+                                        }
+                                        .frame(height: 250)
+                                    } else {
+                                        Text("Nécessite macOS 14+ pour le graphique circulaire")
+                                    }
+                                }
+                                .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                            }
+                        }
+                        
+                        // Bar Chart : Notes de tous les cours
+                        if !year.courses.isEmpty {
+                            VStack(alignment: .leading) {
+                                Text("Notes sur 20 par cours").font(.headline)
+                                Chart {
+                                    ForEach(year.courses) { c in
+                                        BarMark(
+                                            x: .value("Cours", c.code),
+                                            y: .value("Note", c.grade)
+                                        )
+                                        .foregroundStyle(Color.blue)
+                                        .annotation(position: .top) {
+                                            Text(String(format: "%.1f", c.grade)).font(.system(size: 9))
                                         }
                                     }
                                 }
@@ -621,63 +672,13 @@ struct AcademicYearDetailView: View {
                             }
                             .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
                         }
-                        
-                        // Graphique de répartition des crédits
-                        if !year.courses.isEmpty {
-                            VStack(alignment: .leading) {
-                                Text("Répartition des Crédits (Catégorie)").font(.headline)
-                                let groupedByCat = Dictionary(grouping: year.courses, by: { $0.category })
-                                if #available(macOS 14.0, *) {
-                                    Chart {
-                                        ForEach(groupedByCat.keys.sorted(), id: \.self) { cat in
-                                            let catCreds = groupedByCat[cat]!.reduce(0) { $0 + $1.credits }
-                                            SectorMark(
-                                                angle: .value("Crédits", catCreds),
-                                                innerRadius: .ratio(0.5),
-                                                angularInset: 1.5
-                                            )
-                                            .foregroundStyle(by: .value("Catégorie", cat))
-                                            .annotation(position: .overlay) {
-                                                Text(String(format: "%.0f", catCreds)).font(.caption).bold().foregroundColor(.white)
-                                            }
-                                        }
-                                    }
-                                    .frame(height: 250)
-                                } else {
-                                    Text("Nécessite macOS 14+ pour le graphique circulaire")
-                                }
-                            }
-                            .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
-                        }
-                    }
-                    
-                    // Bar Chart : Notes de tous les cours
-                    if !year.courses.isEmpty {
-                        VStack(alignment: .leading) {
-                            Text("Notes sur 20 par cours").font(.headline)
-                            Chart {
-                                ForEach(year.courses) { c in
-                                    BarMark(
-                                        x: .value("Cours", c.code),
-                                        y: .value("Note", c.grade)
-                                    )
-                                    .foregroundStyle(Color.blue)
-                                    .annotation(position: .top) {
-                                        Text(String(format: "%.1f", c.grade)).font(.system(size: 9))
-                                    }
-                                }
-                            }
-                            .chartYScale(domain: 0...20)
-                            .frame(height: 250)
-                        }
-                        .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
                     }
                 }
+                .padding()
             }
-            .padding()
+            .sheet(isPresented: $isShowingAddCourse) { AddParcoursCourseSheet(appData: appData, isPresented: $isShowingAddCourse, yearId: year.id) }
+            .sheet(isPresented: $isShowingAddExam) { AddExamResultSheet(appData: appData, isPresented: $isShowingAddExam, yearId: year.id) }
         }
-        .sheet(isPresented: $isShowingAddCourse) { AddParcoursCourseSheet(appData: appData, isPresented: $isShowingAddCourse, yearId: year.id) }
-        .sheet(isPresented: $isShowingAddExam) { AddExamResultSheet(appData: appData, isPresented: $isShowingAddExam, yearId: year.id) }
     }
 }
 
@@ -750,7 +751,6 @@ struct SemesterTableView: View {
     }
 }
 
-// Nouveau Tableau pour les Sessions d'Examens
 struct ExamSessionTableView: View {
     @ObservedObject var appData: AppData
     let yearId: UUID
@@ -866,7 +866,6 @@ struct AddParcoursCourseSheet: View {
     }
 }
 
-// NOUVEAU : Fenêtre pour MODIFIER un cours existant
 struct EditParcoursCourseSheet: View {
     @ObservedObject var appData: AppData
     @Environment(\.dismiss) var dismiss
@@ -930,7 +929,6 @@ struct EditParcoursCourseSheet: View {
     }
 }
 
-// NOUVEAU : Fenêtre d'ajout d'une session d'examen
 struct AddExamResultSheet: View {
     @ObservedObject var appData: AppData
     @Binding var isPresented: Bool
