@@ -95,54 +95,6 @@ struct AcademicYear: Identifiable, Codable {
     var exams: [ExamResult]?
 }
 
-// MARK: - LOGIQUE INTELLIGENTE DU PARCOURS
-extension AcademicYear {
-    // Récupère la meilleure note pour un cours (base + toutes ses sessions)
-    func bestGrade(for courseCode: String) -> Double {
-        guard let course = courses.first(where: { $0.code == courseCode }) else { return 0 }
-        let examGrades = (exams ?? []).filter { $0.courseCode == courseCode }.map { $0.grade }
-        return max(course.grade, examGrades.max() ?? 0)
-    }
-
-    // Calcule les crédits gagnés spécifiquement dans une session donnée
-    func earnedCredits(forSession session: String) -> Double {
-        let sessionExams = (exams ?? []).filter { $0.sessionName == session && $0.grade >= 10.0 }
-        var credits: Double = 0
-        for exam in sessionExams {
-            if let course = courses.first(where: { $0.code == exam.courseCode }) {
-                credits += course.credits
-            }
-        }
-        return credits
-    }
-
-    // Calcule le total de crédits réussis sur l'année
-    func totalEarnedCredits() -> Double {
-        var earned: Double = 0
-        for course in courses {
-            if bestGrade(for: course.code) >= 10.0 {
-                earned += course.credits
-            }
-        }
-        return earned
-    }
-
-    func totalCredits() -> Double {
-        courses.reduce(0) { $0 + $1.credits }
-    }
-
-    // Moyenne pondérée en utilisant la MEILLEURE note de chaque cours
-    func weightedGPA() -> Double {
-        let tot = totalCredits()
-        guard tot > 0 else { return 0 }
-        var sum: Double = 0
-        for course in courses {
-            sum += bestGrade(for: course.code) * course.credits
-        }
-        return sum / tot
-    }
-}
-
 // Types de zoom possibles
 enum ZoomType: String, Identifiable {
     case tableQ1, tableQ2, examsJan, examsJun, examsAug
@@ -152,6 +104,11 @@ enum ZoomType: String, Identifiable {
 
 enum GeneralZoomType: String, Identifiable {
     case equilibre, repartition, points
+    var id: String { self.rawValue }
+}
+
+enum DashboardZoomType: String, Identifiable {
+    case chartEvolution
     var id: String { self.rawValue }
 }
 
@@ -210,7 +167,9 @@ class AppData: ObservableObject {
         self.lastProgressDate = UserDefaults.standard.string(forKey: "lastProgressDate") ?? ""
     }
     
-    // --- GESTION PARCOURS ACADÉMIQUE ---
+    // --- GESTION PARCOURS ACADÉMIQUE (Calculs Intelligents) ---
+    
+    // Récupère TOUS les cours jamais encodés (pour le Picker de l'examen inter-année)
     func allParcoursCourses() -> [ParcoursCourse] {
         var uniqueCourses: [String: ParcoursCourse] = [:]
         for year in academicYears {
@@ -221,6 +180,7 @@ class AppData: ObservableObject {
         return Array(uniqueCourses.values).sorted(by: { $0.code < $1.code })
     }
     
+    // Retrouve un cours spécifique n'importe où dans le parcours
     func getParcoursCourse(code: String) -> ParcoursCourse? {
         for year in academicYears.reversed() {
             if let c = year.courses.first(where: { $0.code == code }) {
@@ -230,6 +190,7 @@ class AppData: ObservableObject {
         return nil
     }
     
+    // Calcule les stats globales (Toutes années confondues)
     func globalParcoursStats() -> (earned: Double, total: Double, gpa: Double) {
         let allCourses = allParcoursCourses()
         var earned: Double = 0
@@ -238,21 +199,36 @@ class AppData: ObservableObject {
         
         for course in allCourses {
             total += course.credits
-            var bestG = course.grade
+            var bestExamGrade: Double? = nil
+            
+            // Cherche si on a fait un examen dans n'importe quelle année pour ce cours
             for y in academicYears {
-                let maxEx = (y.exams ?? []).filter({ $0.courseCode == course.code }).map({ $0.grade }).max() ?? 0
-                bestG = max(bestG, maxEx)
+                let maxEx = (y.exams ?? []).filter({ $0.courseCode == course.code }).map({ $0.grade }).max()
+                if let maxEx = maxEx {
+                    bestExamGrade = max(bestExamGrade ?? 0, maxEx)
+                }
             }
-            if bestG >= 10.0 { earned += course.credits }
-            weightedSum += bestG * course.credits
+            
+            // Si pas d'examen, on prend la note de base du cours
+            let finalGrade = bestExamGrade ?? course.grade
+            
+            if finalGrade >= 10.0 {
+                earned += course.credits
+            }
+            weightedSum += finalGrade * course.credits
         }
+        
         return (earned, total, total > 0 ? weightedSum / total : 0)
     }
     
+    // Calcule les stats spécifiques d'une année (Crédits uniques & Meilleure note)
     func yearParcoursStats(yearId: UUID) -> (earned: Double, totalAttempted: Double, gpa: Double) {
-        guard let year = academicYears.first(where: { $0.id == yearId }) else { return (0, 0, 0) }
+        guard let year = academicYears.first(where: { $0.id == yearId }) else {
+            return (0, 0, 0)
+        }
         let exams = year.exams ?? []
         
+        // Liste de tous les cours impliqués cette année (inscrits au Q1/Q2 OU passés en session)
         var involvedCodes = Set(year.courses.map { $0.code })
         exams.forEach { involvedCodes.insert($0.courseCode) }
         
@@ -262,17 +238,28 @@ class AppData: ObservableObject {
         
         for code in involvedCodes {
             let credits = year.courses.first(where: { $0.code == code })?.credits ?? getParcoursCourse(code: code)?.credits ?? 0
-            let baseGrade = year.courses.first(where: { $0.code == code })?.grade ?? 0
-            let bestExamGrade = exams.filter { $0.courseCode == code }.map { $0.grade }.max() ?? 0
-            let bestGrade = max(baseGrade, bestExamGrade)
+            
+            let examGrades = exams.filter { $0.courseCode == code }.map { $0.grade }
+            let bestGrade: Double
+            
+            // LOGIQUE CORRIGÉE : S'il y a des examens, on IGNORE la note de base (qui peut être un faux 10.0)
+            if !examGrades.isEmpty {
+                bestGrade = examGrades.max()!
+            } else {
+                bestGrade = year.courses.first(where: { $0.code == code })?.grade ?? 0
+            }
             
             totalAttempted += credits
-            if bestGrade >= 10.0 { earned += credits }
+            if bestGrade >= 10.0 {
+                earned += credits // On ajoute les crédits UNE SEULE FOIS
+            }
             weightedSum += bestGrade * credits
         }
+        
         return (earned, totalAttempted, totalAttempted > 0 ? weightedSum / totalAttempted : 0)
     }
     
+    // --- GESTION CRUD PARCOURS ---
     func addParcoursCourse(yearId: UUID, course: ParcoursCourse) {
         objectWillChange.send()
         if let index = academicYears.firstIndex(where: { $0.id == yearId }) {
@@ -301,7 +288,9 @@ class AppData: ObservableObject {
     func addExamResult(yearId: UUID, exam: ExamResult) {
         objectWillChange.send()
         if let index = academicYears.firstIndex(where: { $0.id == yearId }) {
-            if academicYears[index].exams == nil { academicYears[index].exams = [] }
+            if academicYears[index].exams == nil {
+                academicYears[index].exams = []
+            }
             academicYears[index].exams?.append(exam)
             save()
         }
@@ -321,6 +310,7 @@ class AppData: ObservableObject {
         if lastProgressDate == today { return }
         
         let yesterday = DateFormatter.yyyyMMdd.string(from: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
+        
         if lastProgressDate == yesterday {
             currentStreak += 1
         } else {
@@ -333,6 +323,7 @@ class AppData: ObservableObject {
     func getDisplayStreak() -> Int {
         let today = DateFormatter.yyyyMMdd.string(from: Date())
         let yesterday = DateFormatter.yyyyMMdd.string(from: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
+        
         if lastProgressDate == today || lastProgressDate == yesterday {
             return currentStreak
         }
@@ -346,6 +337,7 @@ class AppData: ObservableObject {
     
     func updateNotifications() {
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        
         for (dateStr, events) in schedule {
             if let date = DateFormatter.yyyyMMdd.date(from: dateStr) {
                 if events.contains(where: { $0.type == "Étude" }) {
@@ -359,6 +351,7 @@ class AppData: ObservableObject {
                 }
             }
         }
+        
         for (cName, course) in courses {
             if let todos = course.todos {
                 for todo in todos {
@@ -387,6 +380,7 @@ class AppData: ObservableObject {
         content.title = title
         content.body = body
         content.sound = .default
+        
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
         let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request)
@@ -395,12 +389,16 @@ class AppData: ObservableObject {
     // --- GESTION COURS BLOCUS ---
     func renameCourse(oldName: String, newName: String) {
         guard !newName.isEmpty, oldName != newName, courses[newName] == nil, let course = courses[oldName] else { return }
+        
         courses[newName] = course
         courses.removeValue(forKey: oldName)
+        
         for (date, events) in schedule {
             var updatedEvents = events
             for i in 0..<updatedEvents.count {
-                if updatedEvents[i].course == oldName { updatedEvents[i].course = newName }
+                if updatedEvents[i].course == oldName {
+                    updatedEvents[i].course = newName
+                }
             }
             schedule[date] = updatedEvents
         }
@@ -418,7 +416,11 @@ class AppData: ObservableObject {
     func removeScheduleEvent(dateStr: String, eventId: UUID) {
         if var currentEvents = schedule[dateStr] {
             currentEvents.removeAll(where: { $0.id == eventId })
-            if currentEvents.isEmpty { schedule.removeValue(forKey: dateStr) } else { schedule[dateStr] = currentEvents }
+            if currentEvents.isEmpty {
+                schedule.removeValue(forKey: dateStr)
+            } else {
+                schedule[dateStr] = currentEvents
+            }
             save()
         }
     }
@@ -445,10 +447,14 @@ class AppData: ObservableObject {
     func currentStudyDayInfo(for course: String) -> (current: Int, total: Int)? {
         var studyDates: [String] = []
         for (dateStr, events) in schedule {
-            if events.contains(where: { $0.course == course && $0.type == "Étude" }) { studyDates.append(dateStr) }
+            if events.contains(where: { $0.course == course && $0.type == "Étude" }) {
+                studyDates.append(dateStr)
+            }
         }
         studyDates.sort()
-        if let currentIndex = studyDates.firstIndex(of: DateFormatter.yyyyMMdd.string(from: Date())) { return (currentIndex + 1, studyDates.count) }
+        if let currentIndex = studyDates.firstIndex(of: DateFormatter.yyyyMMdd.string(from: Date())) {
+            return (currentIndex + 1, studyDates.count)
+        }
         return nil
     }
     
@@ -511,7 +517,6 @@ struct ContentView: View {
                     NavigationLink("📅 Planning", value: "Planning")
                     NavigationLink("🎓 Parcours", value: "Parcours")
                 }
-                
                 let groupedCourses = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })
                 ForEach(groupedCourses.keys.sorted(), id: \.self) { category in
                     Section(category) {
@@ -753,7 +758,6 @@ struct GeneralRepartitionChart: View {
             (name: $0, days: appData.computeStudyDays(for: $0).total)
         }.filter { $0.days > 0 }
         
-        // CORRECTION du ViewBuilder : On calcule le texte avant le VStack
         let hoverText: String = {
             guard let angle = hoveredAngle else { return "Survolez pour le détail" }
             var sum: Double = 0
@@ -930,7 +934,7 @@ struct ParcoursMainView: View {
 // MARK: - PARCOURS DASHBOARD
 struct ParcoursDashboardView: View {
     @ObservedObject var appData: AppData
-    @State private var hoveredYear: String?
+    @State private var zoomedItem: DashboardZoomType?
     
     var body: some View {
         ScrollView {
@@ -962,40 +966,14 @@ struct ParcoursDashboardView: View {
                     }
                     
                     VStack(alignment: .leading) {
-                        Text("Évolution de la moyenne annuelle").font(.headline)
-                        VStack {
-                            if let h = hoveredYear, let yId = appData.academicYears.first(where: { $0.yearString == h })?.id {
-                                let yStats = appData.yearParcoursStats(yearId: yId)
-                                Text("\(h) : \(String(format: "%.2f", yStats.gpa)) / 20")
-                                    .font(.caption)
-                                    .bold()
-                                    .foregroundColor(.blue)
-                            } else {
-                                Text("Survolez pour le détail")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                        HStack {
+                            Text("Évolution de la moyenne annuelle").font(.headline)
+                            Spacer()
+                            Button(action: { zoomedItem = .chartEvolution }) {
+                                Image(systemName: "plus.magnifyingglass")
                             }
-                            
-                            Chart {
-                                ForEach(appData.academicYears) { year in
-                                    let yStats = appData.yearParcoursStats(yearId: year.id)
-                                    LineMark(
-                                        x: .value("Année", year.yearString),
-                                        y: .value("Moyenne", yStats.gpa)
-                                    )
-                                    .symbol(Circle())
-                                    .foregroundStyle(Color.blue)
-                                    
-                                    if hoveredYear == year.yearString {
-                                        RuleMark(x: .value("Année", year.yearString))
-                                            .foregroundStyle(.gray.opacity(0.3))
-                                    }
-                                }
-                            }
-                            .chartXSelection(value: $hoveredYear)
-                            .chartYScale(domain: 0...20)
                         }
-                        .frame(height: 250)
+                        DashboardEvolutionChart(appData: appData).frame(height: 250)
                     }
                     .padding()
                     .background(Color(NSColor.controlBackgroundColor))
@@ -1004,8 +982,76 @@ struct ParcoursDashboardView: View {
             }
             .padding()
         }
+        .sheet(item: $zoomedItem) { zItem in
+            DashboardZoomModalView(appData: appData, zoomType: zItem)
+        }
     }
 }
+
+struct DashboardEvolutionChart: View {
+    @ObservedObject var appData: AppData
+    @State private var hoveredYear: String?
+    
+    var body: some View {
+        VStack {
+            if let h = hoveredYear, let yId = appData.academicYears.first(where: { $0.yearString == h })?.id {
+                let yStats = appData.yearParcoursStats(yearId: yId)
+                Text("\(h) : \(String(format: "%.2f", yStats.gpa)) / 20")
+                    .font(.caption)
+                    .bold()
+                    .foregroundColor(.blue)
+            } else {
+                Text("Survolez pour le détail")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Chart {
+                ForEach(appData.academicYears) { year in
+                    let yStats = appData.yearParcoursStats(yearId: year.id)
+                    LineMark(
+                        x: .value("Année", year.yearString),
+                        y: .value("Moyenne", yStats.gpa)
+                    )
+                    .symbol(Circle())
+                    .foregroundStyle(Color.blue)
+                    
+                    if hoveredYear == year.yearString {
+                        RuleMark(x: .value("Année", year.yearString))
+                            .foregroundStyle(.gray.opacity(0.3))
+                    }
+                }
+            }
+            .chartXSelection(value: $hoveredYear)
+            .chartYScale(domain: 0...20)
+        }
+    }
+}
+
+struct DashboardZoomModalView: View {
+    @Environment(\.dismiss) var dismiss
+    @ObservedObject var appData: AppData
+    let zoomType: DashboardZoomType
+    
+    var body: some View {
+        VStack {
+            HStack {
+                Spacer()
+                Button("Fermer la vue") { dismiss() }.buttonStyle(.borderedProminent)
+            }.padding(.bottom, 10)
+            
+            switch zoomType {
+            case .chartEvolution:
+                Text("Évolution de la moyenne annuelle").font(.title).bold()
+                DashboardEvolutionChart(appData: appData).padding()
+            }
+            Spacer()
+        }
+        .padding()
+        .frame(minWidth: 800, minHeight: 600)
+    }
+}
+
 
 // MARK: - VUE DÉTAILLÉE D'UNE ANNÉE
 struct AcademicYearDetailView: View {
@@ -1168,7 +1214,7 @@ struct AcademicYearDetailView: View {
                                                 Image(systemName: "plus.magnifyingglass")
                                             }
                                         }
-                                        SessionBarChart(exams: jan).frame(height: 200)
+                                        SessionBarChart(appData: appData, exams: jan).frame(height: 200)
                                     }
                                     .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
                                 }
@@ -1181,7 +1227,7 @@ struct AcademicYearDetailView: View {
                                                 Image(systemName: "plus.magnifyingglass")
                                             }
                                         }
-                                        SessionBarChart(exams: jun).frame(height: 200)
+                                        SessionBarChart(appData: appData, exams: jun).frame(height: 200)
                                     }
                                     .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
                                 }
@@ -1194,7 +1240,7 @@ struct AcademicYearDetailView: View {
                                                 Image(systemName: "plus.magnifyingglass")
                                             }
                                         }
-                                        SessionBarChart(exams: aug).frame(height: 200)
+                                        SessionBarChart(appData: appData, exams: aug).frame(height: 200)
                                     }
                                     .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
                                 }
@@ -1360,11 +1406,12 @@ struct ExamSessionTableContent: View {
 // --- Les Graphiques Réutilisables ---
 
 struct NotesChart: View {
-    let appData: AppData
+    @ObservedObject var appData: AppData
     let year: AcademicYear
     @State private var hoveredCourse: String?
     
     var body: some View {
+        // Combiner tous les cours (ceux inscrits cette année + ceux repassés en exam cette année)
         var involvedCodes = Set(year.courses.map { $0.code })
         (year.exams ?? []).forEach { involvedCodes.insert($0.courseCode) }
         let codesList = Array(involvedCodes).sorted()
@@ -1372,8 +1419,10 @@ struct NotesChart: View {
         return VStack {
             if let h = hoveredCourse {
                 let baseGrade = year.courses.first(where: { $0.code == h })?.grade ?? 0
-                let bestExam = (year.exams ?? []).filter { $0.courseCode == h }.map { $0.grade }.max() ?? 0
-                Text("\(h) : \(String(format: "%.2f", max(baseGrade, bestExam))) / 20")
+                let examGrades = (year.exams ?? []).filter { $0.courseCode == h }.map { $0.grade }
+                let bestG = examGrades.isEmpty ? baseGrade : (examGrades.max() ?? 0)
+                let courseName = appData.getParcoursCourse(code: h)?.name ?? "Cours"
+                Text("\(h) - \(courseName) : \(String(format: "%.2f", bestG)) / 20")
                     .font(.caption)
                     .bold()
                     .foregroundColor(.blue)
@@ -1386,8 +1435,8 @@ struct NotesChart: View {
             Chart {
                 ForEach(codesList, id: \.self) { code in
                     let baseGrade = year.courses.first(where: { $0.code == code })?.grade ?? 0
-                    let bestExam = (year.exams ?? []).filter { $0.courseCode == code }.map { $0.grade }.max() ?? 0
-                    let bestG = max(baseGrade, bestExam)
+                    let examGrades = (year.exams ?? []).filter { $0.courseCode == code }.map { $0.grade }
+                    let bestG = examGrades.isEmpty ? baseGrade : (examGrades.max() ?? 0)
                     
                     BarMark(
                         x: .value("Cours", code),
@@ -1415,7 +1464,6 @@ struct CategoriesChart: View {
                     (cat: $0, credits: groupedByCat[$0]!.reduce(0) { $0 + $1.credits })
                 }.sorted(by: { $0.cat < $1.cat })
                 
-                // CORRECTION du ViewBuilder : Texte calculé avant le VStack
                 let hoverText: String = {
                     guard let angle = hoveredAngle else { return "Survolez pour le détail" }
                     var sum: Double = 0
@@ -1452,13 +1500,15 @@ struct CategoriesChart: View {
 }
 
 struct SessionBarChart: View {
+    @ObservedObject var appData: AppData
     let exams: [ExamResult]
     @State private var hoveredCourse: String?
     
     var body: some View {
         VStack {
             if let h = hoveredCourse, let exam = exams.first(where: { $0.courseCode == h }) {
-                Text("\(h) : \(String(format: "%.2f", exam.grade)) / 20")
+                let courseName = appData.getParcoursCourse(code: h)?.name ?? "Cours"
+                Text("\(h) - \(courseName) : \(String(format: "%.2f", exam.grade)) / 20")
                     .font(.caption)
                     .bold()
                     .foregroundColor(.blue)
@@ -1522,13 +1572,13 @@ struct ZoomModalView: View {
                 CategoriesChart(courses: year.courses).padding()
             case .chartJan:
                 Text("Notes de la session de Janvier").font(.title).bold()
-                SessionBarChart(exams: (year.exams ?? []).filter{ $0.sessionName == "Janvier" }).padding()
+                SessionBarChart(appData: appData, exams: (year.exams ?? []).filter{ $0.sessionName == "Janvier" }).padding()
             case .chartJun:
                 Text("Notes de la session de Juin").font(.title).bold()
-                SessionBarChart(exams: (year.exams ?? []).filter{ $0.sessionName == "Juin" }).padding()
+                SessionBarChart(appData: appData, exams: (year.exams ?? []).filter{ $0.sessionName == "Juin" }).padding()
             case .chartAug:
                 Text("Notes de la session d'Août").font(.title).bold()
-                SessionBarChart(exams: (year.exams ?? []).filter{ $0.sessionName == "Août" }).padding()
+                SessionBarChart(appData: appData, exams: (year.exams ?? []).filter{ $0.sessionName == "Août" }).padding()
             }
             Spacer()
         }
