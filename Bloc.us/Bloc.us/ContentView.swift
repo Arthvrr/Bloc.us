@@ -16,7 +16,47 @@ extension NumberFormatter {
     }
 }
 
-// MARK: - MODELS
+// MARK: - EXTENSIONS COULEURS (Uniformisation des catégories)
+extension String {
+    // Génère une couleur constante et identique basée sur le texte de la catégorie
+    func categoryColor() -> Color {
+        let colors: [Color] = [.blue, .green, .orange, .purple, .pink, .teal, .indigo, .mint, .cyan, .brown]
+        var sum = 0
+        for char in self.utf8 { sum += Int(char) }
+        return colors[sum % colors.count]
+    }
+}
+
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default: (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue:  Double(b) / 255, opacity: Double(a) / 255)
+    }
+    
+    func toHex() -> String {
+        guard let components = NSColor(self).cgColor.components else { return "#000000" }
+        return String(format: "#%02lX%02lX%02lX", lroundf(Float(components[0]) * 255), lroundf(Float(components[1]) * 255), lroundf(Float(components[2]) * 255))
+    }
+}
+
+extension DateFormatter {
+    static let yyyyMMdd: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+}
+
+// MARK: - MODELS BLOCUS
 struct TaskItem: Identifiable, Codable {
     var id = UUID()
     var name: String
@@ -66,7 +106,7 @@ struct Course: Codable {
     var category: String?
 }
 
-// Modèles pour le Parcours Académique
+// MARK: - MODELS PARCOURS (Séparation Programmes / Années)
 struct ParcoursCourse: Identifiable, Codable {
     var id = UUID()
     var code: String
@@ -86,67 +126,29 @@ struct ExamResult: Identifiable, Codable {
     var attempt: Int
 }
 
-struct AcademicYear: Identifiable, Codable {
+// 1. Le Programme (Le PAE, ex: BAC 1)
+struct DegreeProgram: Identifiable, Codable {
     var id = UUID()
-    var yearString: String
-    var level: String
+    var name: String // "BAC 1"
     var school: String
     var courses: [ParcoursCourse]
-    var exams: [ExamResult]?
 }
 
-// MARK: - LOGIQUE INTELLIGENTE DU PARCOURS
-extension AcademicYear {
-    // Récupère la meilleure note pour un cours du PAE (base + toutes ses sessions)
-    func bestGrade(for courseCode: String) -> Double {
-        guard let course = courses.first(where: { $0.code == courseCode }) else { return 0 }
-        let examGrades = (exams ?? []).filter { $0.courseCode == courseCode }.map { $0.grade }
-        return max(course.grade, examGrades.max() ?? 0)
-    }
-
-    // Calcule les crédits gagnés spécifiquement dans une session donnée
-    func earnedCredits(forSession session: String) -> Double {
-        let sessionExams = (exams ?? []).filter { $0.sessionName == session && $0.grade >= 10.0 }
-        var credits: Double = 0
-        for exam in sessionExams {
-            if let course = courses.first(where: { $0.code == exam.courseCode }) {
-                credits += course.credits
-            }
-        }
-        return credits
-    }
-
-    // Calcule le total de crédits réussis sur l'année (PAE uniquement)
-    func totalEarnedCredits() -> Double {
-        var earned: Double = 0
-        for course in courses {
-            if bestGrade(for: course.code) >= 10.0 {
-                earned += course.credits
-            }
-        }
-        return earned
-    }
-
-    func totalCredits() -> Double {
-        courses.reduce(0) { $0 + $1.credits }
-    }
-
-    // Moyenne pondérée en utilisant la MEILLEURE note de chaque cours du PAE
-    func weightedGPA() -> Double {
-        let tot = totalCredits()
-        guard tot > 0 else { return 0 }
-        var sum: Double = 0
-        for course in courses {
-            sum += bestGrade(for: course.code) * course.credits
-        }
-        return sum / tot
-    }
+// 2. L'Année Chronologique (ex: 2021-2022)
+struct AcademicYearTimeline: Identifiable, Codable {
+    var id = UUID()
+    var yearString: String // "2021-2022"
+    var exams: [ExamResult]
 }
 
-// Types de zoom possibles
-enum ZoomType: String, Identifiable {
-    case tableQ1, tableQ2, examsJan, examsJun, examsAug
-    case chartNotes, chartCat, chartJan, chartJun, chartAug
+// MARK: - TYPES DE ZOOM
+enum ProgramZoomType: String, Identifiable {
+    case tableQ1, tableQ2, chartNotes, chartCat
+    var id: String { self.rawValue }
+}
+
+enum YearZoomType: String, Identifiable {
+    case examsJan, examsJun, examsAug, chartJan, chartJun, chartAug
     var id: String { self.rawValue }
 }
 
@@ -160,11 +162,14 @@ enum DashboardZoomType: String, Identifiable {
     var id: String { self.rawValue }
 }
 
-// MARK: - VIEW MODEL (Auto-Save & Notifications)
+// MARK: - VIEW MODEL (AppData)
 class AppData: ObservableObject {
     @Published var courses: [String: Course] = [:] { didSet { save() } }
     @Published var schedule: [String: [CourseEvent]] = [:] { didSet { save() } }
-    @Published var academicYears: [AcademicYear] = [] { didSet { save() } }
+    
+    // NOUVELLES VARIABLES PARCOURS
+    @Published var degreePrograms: [DegreeProgram] = [] { didSet { save() } }
+    @Published var academicYearsTimeline: [AcademicYearTimeline] = [] { didSet { save() } }
     
     @Published var currentStreak: Int = 0
     @Published var lastProgressDate: String = ""
@@ -177,7 +182,8 @@ class AppData: ObservableObject {
     func save() {
         if let encodedCourses = try? JSONEncoder().encode(courses) { UserDefaults.standard.set(encodedCourses, forKey: "courses") }
         if let encodedSchedule = try? JSONEncoder().encode(schedule) { UserDefaults.standard.set(encodedSchedule, forKey: "schedule") }
-        if let encodedYears = try? JSONEncoder().encode(academicYears) { UserDefaults.standard.set(encodedYears, forKey: "academicYears") }
+        if let encodedPrograms = try? JSONEncoder().encode(degreePrograms) { UserDefaults.standard.set(encodedPrograms, forKey: "degreePrograms") }
+        if let encodedTimelines = try? JSONEncoder().encode(academicYearsTimeline) { UserDefaults.standard.set(encodedTimelines, forKey: "academicYearsTimeline") }
         UserDefaults.standard.set(currentStreak, forKey: "currentStreak")
         UserDefaults.standard.set(lastProgressDate, forKey: "lastProgressDate")
         updateNotifications()
@@ -186,21 +192,24 @@ class AppData: ObservableObject {
     func load() {
         let rawCourses = UserDefaults.standard.data(forKey: "courses")
         let rawSchedule = UserDefaults.standard.data(forKey: "schedule")
-        let rawYears = UserDefaults.standard.data(forKey: "academicYears")
+        let rawPrograms = UserDefaults.standard.data(forKey: "degreePrograms")
+        let rawTimelines = UserDefaults.standard.data(forKey: "academicYearsTimeline")
         
         if let data = rawCourses, let decoded = try? JSONDecoder().decode([String: Course].self, from: data) { self.courses = decoded }
         if let data = rawSchedule, let decoded = try? JSONDecoder().decode([String: [CourseEvent]].self, from: data) { self.schedule = decoded }
-        if let data = rawYears, let decoded = try? JSONDecoder().decode([AcademicYear].self, from: data) { self.academicYears = decoded }
+        if let data = rawPrograms, let decoded = try? JSONDecoder().decode([DegreeProgram].self, from: data) { self.degreePrograms = decoded }
+        if let data = rawTimelines, let decoded = try? JSONDecoder().decode([AcademicYearTimeline].self, from: data) { self.academicYearsTimeline = decoded }
         
         self.currentStreak = UserDefaults.standard.integer(forKey: "currentStreak")
         self.lastProgressDate = UserDefaults.standard.string(forKey: "lastProgressDate") ?? ""
     }
     
-    // --- GESTION PARCOURS ACADÉMIQUE ---
+    // --- LOGIQUE PARCOURS ---
+    
     func allParcoursCourses() -> [ParcoursCourse] {
         var uniqueCourses: [String: ParcoursCourse] = [:]
-        for year in academicYears {
-            for course in year.courses {
+        for prog in degreePrograms {
+            for course in prog.courses {
                 uniqueCourses[course.code] = course
             }
         }
@@ -208,47 +217,106 @@ class AppData: ObservableObject {
     }
     
     func getParcoursCourse(code: String) -> ParcoursCourse? {
-        for year in academicYears.reversed() {
-            if let c = year.courses.first(where: { $0.code == code }) { return c }
+        for prog in degreePrograms {
+            if let c = prog.courses.first(where: { $0.code == code }) { return c }
         }
         return nil
     }
     
-    func addParcoursCourse(yearId: UUID, course: ParcoursCourse) {
+    // Trouve la meilleure note pour un cours de tous les temps (Base + Tous les examens)
+    func bestGradeFor(courseCode: String) -> Double {
+        var bestG: Double = 0
+        if let baseCourse = getParcoursCourse(code: courseCode) {
+            bestG = baseCourse.grade
+        }
+        for year in academicYearsTimeline {
+            let maxEx = year.exams.filter({ $0.courseCode == courseCode }).map({ $0.grade }).max() ?? 0
+            bestG = max(bestG, maxEx)
+        }
+        return bestG
+    }
+    
+    func globalParcoursStats() -> (earned: Double, total: Double, gpa: Double) {
+        let allCourses = allParcoursCourses()
+        var earned: Double = 0
+        var total: Double = 0
+        var weightedSum: Double = 0
+        
+        for course in allCourses {
+            total += course.credits
+            let bestG = bestGradeFor(courseCode: course.code)
+            if bestG >= 10.0 { earned += course.credits }
+            weightedSum += bestG * course.credits
+        }
+        return (earned, total, total > 0 ? weightedSum / total : 0)
+    }
+    
+    func programStats(programId: UUID) -> (earned: Double, total: Double, gpa: Double) {
+        guard let prog = degreePrograms.first(where: { $0.id == programId }) else { return (0, 0, 0) }
+        var earned: Double = 0
+        var total: Double = 0
+        var weightedSum: Double = 0
+        
+        for course in prog.courses {
+            total += course.credits
+            let bestG = bestGradeFor(courseCode: course.code)
+            if bestG >= 10.0 { earned += course.credits }
+            weightedSum += bestG * course.credits
+        }
+        return (earned, total, total > 0 ? weightedSum / total : 0)
+    }
+    
+    func yearStats(yearId: UUID) -> (earned: Double, totalAttempted: Double, gpa: Double) {
+        guard let year = academicYearsTimeline.first(where: { $0.id == yearId }) else { return (0, 0, 0) }
+        
+        let involvedCodes = Set(year.exams.map { $0.courseCode })
+        var earned: Double = 0
+        var totalAttempted: Double = 0
+        var weightedSum: Double = 0
+        
+        for code in involvedCodes {
+            let credits = getParcoursCourse(code: code)?.credits ?? 0
+            let bestThisYear = year.exams.filter { $0.courseCode == code }.map { $0.grade }.max() ?? 0
+            
+            totalAttempted += credits
+            if bestThisYear >= 10.0 { earned += credits }
+            weightedSum += bestThisYear * credits
+        }
+        return (earned, totalAttempted, totalAttempted > 0 ? weightedSum / totalAttempted : 0)
+    }
+    
+    // CRUD Programmes
+    func addParcoursCourse(programId: UUID, course: ParcoursCourse) {
         objectWillChange.send()
-        if let index = academicYears.firstIndex(where: { $0.id == yearId }) {
-            academicYears[index].courses.append(course)
-            save()
+        if let index = degreePrograms.firstIndex(where: { $0.id == programId }) {
+            degreePrograms[index].courses.append(course); save()
         }
     }
-    func updateParcoursCourse(yearId: UUID, course: ParcoursCourse) {
+    func updateParcoursCourse(programId: UUID, course: ParcoursCourse) {
         objectWillChange.send()
-        if let yIndex = academicYears.firstIndex(where: { $0.id == yearId }),
-           let cIndex = academicYears[yIndex].courses.firstIndex(where: { $0.id == course.id }) {
-            academicYears[yIndex].courses[cIndex] = course
-            save()
+        if let pIndex = degreePrograms.firstIndex(where: { $0.id == programId }),
+           let cIndex = degreePrograms[pIndex].courses.firstIndex(where: { $0.id == course.id }) {
+            degreePrograms[pIndex].courses[cIndex] = course; save()
         }
     }
-    func removeParcoursCourse(yearId: UUID, courseId: UUID) {
+    func removeParcoursCourse(programId: UUID, courseId: UUID) {
         objectWillChange.send()
-        if let index = academicYears.firstIndex(where: { $0.id == yearId }) {
-            academicYears[index].courses.removeAll(where: { $0.id == courseId })
-            save()
+        if let index = degreePrograms.firstIndex(where: { $0.id == programId }) {
+            degreePrograms[index].courses.removeAll(where: { $0.id == courseId }); save()
         }
     }
+    
+    // CRUD Années (Examens)
     func addExamResult(yearId: UUID, exam: ExamResult) {
         objectWillChange.send()
-        if let index = academicYears.firstIndex(where: { $0.id == yearId }) {
-            if academicYears[index].exams == nil { academicYears[index].exams = [] }
-            academicYears[index].exams?.append(exam)
-            save()
+        if let index = academicYearsTimeline.firstIndex(where: { $0.id == yearId }) {
+            academicYearsTimeline[index].exams.append(exam); save()
         }
     }
     func removeExamResult(yearId: UUID, examId: UUID) {
         objectWillChange.send()
-        if let index = academicYears.firstIndex(where: { $0.id == yearId }) {
-            academicYears[index].exams?.removeAll(where: { $0.id == examId })
-            save()
+        if let index = academicYearsTimeline.firstIndex(where: { $0.id == yearId }) {
+            academicYearsTimeline[index].exams.removeAll(where: { $0.id == examId }); save()
         }
     }
     
@@ -258,8 +326,7 @@ class AppData: ObservableObject {
         if lastProgressDate == today { return }
         let yesterday = DateFormatter.yyyyMMdd.string(from: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
         if lastProgressDate == yesterday { currentStreak += 1 } else { currentStreak = 1 }
-        lastProgressDate = today
-        save()
+        lastProgressDate = today; save()
     }
     func getDisplayStreak() -> Int {
         let today = DateFormatter.yyyyMMdd.string(from: Date())
@@ -274,14 +341,10 @@ class AppData: ObservableObject {
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         for (dateStr, events) in schedule {
             if let date = DateFormatter.yyyyMMdd.date(from: dateStr) {
-                if events.contains(where: { $0.type == "Étude" }) {
-                    scheduleNotification(title: "🎯 Focus du jour", body: "Tu as des sessions d'étude prévues aujourd'hui ! Bon blocus.", date: date, hour: 9, minute: 0, id: "study-\(dateStr)")
-                }
+                if events.contains(where: { $0.type == "Étude" }) { scheduleNotification(title: "🎯 Focus du jour", body: "Tu as des sessions d'étude prévues aujourd'hui ! Bon blocus.", date: date, hour: 9, minute: 0, id: "study-\(dateStr)") }
                 let exams = events.filter { $0.type == "Examen" }
                 for exam in exams {
-                    if let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: date) {
-                        scheduleNotification(title: "🎒 Prêt pour l'examen ?", body: "Demain tu as examen de \(exam.course). Prépare tes affaires !", date: dayBefore, hour: 20, minute: 0, id: "exam-\(exam.id.uuidString)")
-                    }
+                    if let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: date) { scheduleNotification(title: "🎒 Prêt pour l'examen ?", body: "Demain tu as examen de \(exam.course). Prépare tes affaires !", date: dayBefore, hour: 20, minute: 0, id: "exam-\(exam.id.uuidString)") }
                 }
             }
         }
@@ -362,29 +425,6 @@ class AppData: ObservableObject {
         }
         return result
     }
-}
-
-// MARK: - EXTENSIONS
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0; Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default: (a, r, g, b) = (255, 0, 0, 0)
-        }
-        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue:  Double(b) / 255, opacity: Double(a) / 255)
-    }
-    func toHex() -> String {
-        guard let components = NSColor(self).cgColor.components else { return "#000000" }
-        return String(format: "#%02lX%02lX%02lX", lroundf(Float(components[0]) * 255), lroundf(Float(components[1]) * 255), lroundf(Float(components[2]) * 255))
-    }
-}
-extension DateFormatter {
-    static let yyyyMMdd: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
 }
 
 // MARK: - MAIN VIEW (Navigation)
@@ -515,7 +555,6 @@ struct GeneralView: View {
     }
 }
 
-// Composants Chart Isolés avec HOVER pour la page Général
 struct GeneralEquilibreChart: View {
     @ObservedObject var appData: AppData
     @State private var hoveredCourse: String?
@@ -523,7 +562,6 @@ struct GeneralEquilibreChart: View {
         VStack {
             if let h = hoveredCourse { Text("\(h) : \(String(format: "%.1f", appData.computeProgress(for: h) * 100)) % accompli").font(.caption).bold().foregroundColor(.blue) }
             else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
-            
             Chart {
                 ForEach(appData.courses.keys.sorted(), id: \.self) { c in
                     BarMark(x: .value("Progression", appData.computeProgress(for: c) * 100), y: .value("Cours", c))
@@ -542,16 +580,7 @@ struct GeneralRepartitionChart: View {
     @State private var hoveredAngle: Double?
     var body: some View {
         let data = appData.courses.keys.map { (name: $0, days: appData.computeStudyDays(for: $0).total) }.filter { $0.days > 0 }
-        
-        let hoverText: String = {
-            guard let angle = hoveredAngle else { return "Survolez pour le détail" }
-            var sum: Double = 0
-            for item in data {
-                sum += Double(item.days)
-                if angle <= sum { return "\(item.name) : \(item.days) jour(s)" }
-            }
-            return " "
-        }()
+        let hoverText: String = { guard let angle = hoveredAngle else { return "Survolez pour le détail" }; var sum: Double = 0; for item in data { sum += Double(item.days); if angle <= sum { return "\(item.name) : \(item.days) jour(s)" } }; return " " }()
         
         VStack {
             if #available(macOS 14.0, *) {
@@ -575,9 +604,7 @@ struct GeneralPointsChart: View {
         let data = generateBarData()
         VStack {
             if let h = hoveredCourse {
-                let courseData = data.filter { $0.course == h }
-                let acq = courseData.first(where: { $0.type == "1. Acquis" })?.points ?? 0
-                let aReu = courseData.first(where: { $0.type == "2. À réussir" })?.points ?? 0
+                let courseData = data.filter { $0.course == h }; let acq = courseData.first(where: { $0.type == "1. Acquis" })?.points ?? 0; let aReu = courseData.first(where: { $0.type == "2. À réussir" })?.points ?? 0
                 Text("\(h) : \(String(format: "%.1f", acq)) acquis, \(String(format: "%.1f", aReu)) à réussir").font(.caption).bold().foregroundColor(.blue)
             } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
             
@@ -597,16 +624,8 @@ struct GeneralPointsChart: View {
     func generateBarData() -> [BarData] {
         var result: [BarData] = []
         for (cName, d) in appData.courses {
-            let target = d.passingGrade
-            let earned = d.grading.reduce(0) { $0 + $1.score }
-            let totGraded = d.grading.reduce(0) { $0 + $1.total }
-            let examTot = max(0, 20 - totGraded)
-            let needed = max(0, target - earned)
-            let neededExam = min(examTot, needed)
-            let bonus = max(0, examTot - neededExam)
-            result.append(BarData(course: cName, type: "1. Acquis", points: earned))
-            result.append(BarData(course: cName, type: "2. À réussir", points: neededExam))
-            result.append(BarData(course: cName, type: "3. Bonus", points: bonus))
+            let target = d.passingGrade; let earned = d.grading.reduce(0) { $0 + $1.score }; let totGraded = d.grading.reduce(0) { $0 + $1.total }; let examTot = max(0, 20 - totGraded); let needed = max(0, target - earned); let neededExam = min(examTot, needed); let bonus = max(0, examTot - neededExam)
+            result.append(BarData(course: cName, type: "1. Acquis", points: earned)); result.append(BarData(course: cName, type: "2. À réussir", points: neededExam)); result.append(BarData(course: cName, type: "3. Bonus", points: bonus))
         }
         return result
     }
@@ -629,10 +648,14 @@ struct GeneralZoomModalView: View {
     }
 }
 
+
 // MARK: - PARCOURS MAIN VIEW (Le Hub)
 struct ParcoursMainView: View {
     @ObservedObject var appData: AppData
-    @State private var selectedTab: String = "Dashboard"
+    @State private var selectedMainTab: String = "Dashboard"
+    
+    // Pour la création
+    @State private var isShowingAddProgram = false
     @State private var isShowingAddYear = false
     
     var body: some View {
@@ -640,21 +663,33 @@ struct ParcoursMainView: View {
             HStack {
                 Text("🎓 Mon Parcours Académique").font(.largeTitle).bold()
                 Spacer()
-                Button("➕ Ajouter une année") { isShowingAddYear = true }.buttonStyle(.bordered)
+                Menu("➕ Ajouter") {
+                    Button("Un Programme (PAE)") { isShowingAddProgram = true }
+                    Button("Une Année Chronologique (Examens)") { isShowingAddYear = true }
+                }
             }.padding([.horizontal, .top])
             
-            Picker("", selection: $selectedTab) {
+            Picker("", selection: $selectedMainTab) {
                 Text("Dashboard Global").tag("Dashboard")
-                ForEach(appData.academicYears, id: \.id) { year in Text("\(year.level) (\(year.yearString))").tag(year.id.uuidString) }
+                Text("Programmes (PAE)").tag("Programmes")
+                Text("Années Académiques").tag("Annees")
             }.pickerStyle(.segmented).padding(.horizontal)
             
             Divider()
             
-            if selectedTab == "Dashboard" { ParcoursDashboardView(appData: appData) }
-            else if let yearId = UUID(uuidString: selectedTab) { AcademicYearDetailView(appData: appData, yearId: yearId, selectedTab: $selectedTab) }
+            if selectedMainTab == "Dashboard" {
+                ParcoursDashboardView(appData: appData)
+            }
+            else if selectedMainTab == "Programmes" {
+                ProgramSelectionView(appData: appData)
+            }
+            else if selectedMainTab == "Annees" {
+                YearSelectionView(appData: appData)
+            }
             Spacer()
         }
-        .sheet(isPresented: $isShowingAddYear) { AddAcademicYearSheet(appData: appData, isPresented: $isShowingAddYear, selectedTab: $selectedTab) }
+        .sheet(isPresented: $isShowingAddProgram) { AddDegreeProgramSheet(appData: appData, isPresented: $isShowingAddProgram) }
+        .sheet(isPresented: $isShowingAddYear) { AddAcademicYearTimelineSheet(appData: appData, isPresented: $isShowingAddYear) }
     }
 }
 
@@ -667,33 +702,20 @@ struct ParcoursDashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
                 Text("Vue d'ensemble de tes études").font(.title2).bold()
-                if appData.academicYears.isEmpty {
-                    Text("Ajoute une année académique pour commencer à tracker ton parcours !").foregroundColor(.secondary)
+                if appData.degreePrograms.isEmpty && appData.academicYearsTimeline.isEmpty {
+                    Text("Ajoute un Programme (BAC 1) puis une Année Académique (2021-2022) pour commencer !").foregroundColor(.secondary)
                 } else {
-                    let totalCredits = appData.academicYears.reduce(0) { $0 + $1.totalCredits() }
-                    let earnedCredits = appData.academicYears.reduce(0) { $0 + $1.totalEarnedCredits() }
-                    
-                    let totalWeighted = appData.academicYears.reduce(0) { sumYear, year in
-                        sumYear + year.courses.reduce(0) { sumCourse, course in
-                            sumCourse + (year.bestGrade(for: course.code) * course.credits)
-                        }
-                    }
-                    
-                    let globalGPA = totalCredits > 0 ? totalWeighted / totalCredits : 0
-                    let totalCoursesCount = appData.academicYears.reduce(0) { $0 + $1.courses.count }
+                    let stats = appData.globalParcoursStats()
+                    let totalCoursesCount = appData.allParcoursCourses().count
                     
                     HStack(spacing: 20) {
-                        RecapCard(title: "Crédits Validés (Toutes années)", value: "\(String(format: "%.1f", earnedCredits)) / \(String(format: "%.1f", totalCredits))", color: .green)
-                        RecapCard(title: "Moyenne Globale Pondérée", value: "\(String(format: "%.2f", globalGPA)) / 20", color: .blue)
-                        RecapCard(title: "Cours passés", value: "\(totalCoursesCount)", color: .orange)
+                        RecapCard(title: "Crédits Validés (Global)", value: "\(String(format: "%.1f", stats.earned)) / \(String(format: "%.1f", stats.total))", color: .green)
+                        RecapCard(title: "Moyenne Globale Pondérée", value: "\(String(format: "%.2f", stats.gpa)) / 20", color: .blue)
+                        RecapCard(title: "Cours inscrits uniques", value: "\(totalCoursesCount)", color: .orange)
                     }
                     
                     VStack(alignment: .leading) {
-                        HStack {
-                            Text("Évolution de la moyenne annuelle").font(.headline)
-                            Spacer()
-                            Button(action: { zoomedItem = .chartEvolution }) { Image(systemName: "plus.magnifyingglass") }
-                        }
+                        HStack { Text("Évolution de la moyenne annuelle (par Sessions)").font(.headline); Spacer(); Button(action: { zoomedItem = .chartEvolution }) { Image(systemName: "plus.magnifyingglass") } }
                         DashboardEvolutionChart(appData: appData).frame(height: 250)
                     }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
                 }
@@ -708,19 +730,18 @@ struct DashboardEvolutionChart: View {
     @State private var hoveredYear: String?
     var body: some View {
         VStack {
-            if let h = hoveredYear, let yId = appData.academicYears.first(where: { $0.yearString == h })?.id, let year = appData.academicYears.first(where: { $0.id == yId }) {
-                Text("\(h) : \(String(format: "%.2f", year.weightedGPA())) / 20").font(.caption).bold().foregroundColor(.blue)
+            if let h = hoveredYear, let yId = appData.academicYearsTimeline.first(where: { $0.yearString == h })?.id {
+                let yStats = appData.yearStats(yearId: yId)
+                Text("\(h) : \(String(format: "%.2f", yStats.gpa)) / 20").font(.caption).bold().foregroundColor(.blue)
             } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
             
             Chart {
-                ForEach(appData.academicYears) { year in
-                    LineMark(x: .value("Année", year.yearString), y: .value("Moyenne", year.weightedGPA()))
-                        .symbol(Circle()).foregroundStyle(Color.blue)
+                ForEach(appData.academicYearsTimeline) { year in
+                    let yStats = appData.yearStats(yearId: year.id)
+                    LineMark(x: .value("Année", year.yearString), y: .value("Moyenne", yStats.gpa)).symbol(Circle()).foregroundStyle(Color.blue)
                     if hoveredYear == year.yearString { RuleMark(x: .value("Année", year.yearString)).foregroundStyle(.gray.opacity(0.3)) }
                 }
-            }
-            .chartXSelection(value: $hoveredYear)
-            .chartYScale(domain: 0...20)
+            }.chartXSelection(value: $hoveredYear).chartYScale(domain: 0...20)
         }
     }
 }
@@ -740,128 +761,153 @@ struct DashboardZoomModalView: View {
     }
 }
 
-// MARK: - VUE DÉTAILLÉE D'UNE ANNÉE
-struct AcademicYearDetailView: View {
+
+// MARK: - ONGLET : PROGRAMMES (PAE)
+struct ProgramSelectionView: View {
     @ObservedObject var appData: AppData
-    let yearId: UUID
-    @Binding var selectedTab: String
-    
-    @State private var isShowingAddCourse = false
-    @State private var isShowingAddExam = false
-    @State private var zoomedItem: ZoomType?
+    @State private var selectedProgramId: String = ""
     
     var body: some View {
-        if let year = appData.academicYears.first(where: { $0.id == yearId }) {
+        VStack(alignment: .leading) {
+            if appData.degreePrograms.isEmpty {
+                Text("Aucun programme créé. Ajoute-en un via le bouton en haut à droite !").foregroundColor(.secondary).padding()
+            } else {
+                Picker("Programme", selection: $selectedProgramId) {
+                    ForEach(appData.degreePrograms) { prog in Text("\(prog.name) (\(prog.school))").tag(prog.id.uuidString) }
+                }.pickerStyle(.menu).padding(.horizontal)
+                
+                if let pid = UUID(uuidString: selectedProgramId), let _ = appData.degreePrograms.first(where: { $0.id == pid }) {
+                    ProgramDetailView(appData: appData, programId: pid)
+                } else {
+                    Text("Sélectionne un programme.").foregroundColor(.secondary).padding()
+                        .onAppear { if let first = appData.degreePrograms.first { selectedProgramId = first.id.uuidString } }
+                }
+            }
+        }
+    }
+}
+
+struct ProgramDetailView: View {
+    @ObservedObject var appData: AppData
+    let programId: UUID
+    @State private var isShowingAddCourse = false
+    @State private var zoomedItem: ProgramZoomType?
+    
+    var body: some View {
+        if let prog = appData.degreePrograms.first(where: { $0.id == programId }) {
+            let stats = appData.programStats(programId: prog.id)
             ScrollView {
                 VStack(alignment: .leading, spacing: 25) {
-                    
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(year.level).font(.title).bold()
-                            Text("\(year.school) • \(year.yearString)").font(.title3).foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Button(action: { appData.academicYears.removeAll(where: { $0.id == year.id }); selectedTab = "Dashboard" }) {
-                            Image(systemName: "trash").foregroundColor(.red); Text("Supprimer l'année").foregroundColor(.red)
-                        }.buttonStyle(.bordered)
-                    }
-                    
-                    // RECAP 100% PAE (comme l'ancien code)
                     HStack(spacing: 15) {
-                        RecapCard(title: "Crédits Validés sur l'année", value: "\(String(format: "%.1f", year.totalEarnedCredits())) / \(String(format: "%.1f", year.totalCredits()))", color: .green)
-                        RecapCard(title: "Moyenne Pondérée (Meilleure note)", value: String(format: "%.2f", year.weightedGPA()), color: .blue)
-                        let avgAttempts = year.courses.isEmpty ? 0 : Double(year.courses.reduce(0) { $0 + $1.attempts }) / Double(year.courses.count)
-                        RecapCard(title: "Moyenne Tentatives", value: String(format: "%.1f", avgAttempts), color: .orange)
-                        RecapCard(title: "Total Cours", value: "\(year.courses.count)", color: .purple)
+                        RecapCard(title: "Crédits Validés (Ce PAE)", value: "\(String(format: "%.1f", stats.earned)) / \(String(format: "%.1f", stats.total))", color: .green)
+                        RecapCard(title: "Moyenne Pondérée (Meilleures Notes)", value: String(format: "%.2f", stats.gpa), color: .blue)
+                        Button(action: { appData.degreePrograms.removeAll(where: { $0.id == prog.id }) }) { Image(systemName: "trash").foregroundColor(.red) }.buttonStyle(.bordered)
                     }
                     Divider()
                     
-                    HStack {
-                        Text("Cours de l'année (PAE)").font(.title2).bold()
-                        Spacer()
-                        Button(action: { isShowingAddCourse = true }) { HStack { Image(systemName: "plus.circle.fill"); Text("Ajouter un cours") } }.buttonStyle(.borderedProminent)
-                    }
-                    
-                    VStack {
-                        HStack { Text("Premier Quadrimestre (Q1)").font(.title3).bold(); Spacer(); Button(action: { zoomedItem = .tableQ1 }) { Image(systemName: "plus.magnifyingglass") } }
-                        SemesterTableContent(appData: appData, yearId: year.id, courses: year.courses.filter { $0.semester == "Q1" })
-                    }
-                    
-                    VStack {
-                        HStack { Text("Deuxième Quadrimestre (Q2)").font(.title3).bold(); Spacer(); Button(action: { zoomedItem = .tableQ2 }) { Image(systemName: "plus.magnifyingglass") } }
-                        SemesterTableContent(appData: appData, yearId: year.id, courses: year.courses.filter { $0.semester == "Q2" })
-                    }
-                    Text("💡 Astuce : Double-cliquez sur un cours pour le modifier.").font(.caption).foregroundColor(.secondary)
+                    HStack { Text("Cours du Programme (PAE)").font(.title2).bold(); Spacer(); Button(action: { isShowingAddCourse = true }) { HStack { Image(systemName: "plus.circle.fill"); Text("Ajouter un cours") } }.buttonStyle(.borderedProminent) }
+                    VStack { HStack { Text("Premier Quadrimestre (Q1)").font(.title3).bold(); Spacer(); Button(action: { zoomedItem = .tableQ1 }) { Image(systemName: "plus.magnifyingglass") } }; SemesterTableContent(appData: appData, programId: prog.id, courses: prog.courses.filter { $0.semester == "Q1" }) }
+                    VStack { HStack { Text("Deuxième Quadrimestre (Q2)").font(.title3).bold(); Spacer(); Button(action: { zoomedItem = .tableQ2 }) { Image(systemName: "plus.magnifyingglass") } }; SemesterTableContent(appData: appData, programId: prog.id, courses: prog.courses.filter { $0.semester == "Q2" }) }
                     
                     Divider()
-                    HStack {
-                        Text("Sessions d'Examens de l'année").font(.title2).bold()
-                        Spacer()
-                        Button(action: { isShowingAddExam = true }) { HStack { Image(systemName: "plus.circle.fill"); Text("Ajouter un résultat") } }.buttonStyle(.borderedProminent)
+                    if !prog.courses.isEmpty {
+                        Text("Analyses du Programme").font(.title2).bold()
+                        HStack(alignment: .top, spacing: 20) {
+                            VStack(alignment: .leading) { HStack { Text("Meilleure Note de tous les temps par cours").font(.headline); Spacer(); Button(action: { zoomedItem = .chartNotes }) { Image(systemName: "plus.magnifyingglass") } }; ProgramNotesChart(appData: appData, program: prog).frame(height: 250) }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                            VStack(alignment: .leading) { HStack { Text("Répartition des Crédits").font(.headline); Spacer(); Button(action: { zoomedItem = .chartCat }) { Image(systemName: "plus.magnifyingglass") } }; CategoriesChart(courses: prog.courses).frame(height: 250) }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                        }
                     }
+                }.padding()
+            }
+            .sheet(isPresented: $isShowingAddCourse) { AddParcoursCourseSheet(appData: appData, isPresented: $isShowingAddCourse, programId: prog.id) }
+            .sheet(item: $zoomedItem) { zoomType in ProgramZoomModalView(appData: appData, program: prog, zoomType: zoomType) }
+        }
+    }
+}
+
+
+// MARK: - ONGLET : ANNÉES ACADÉMIQUES (Sessions d'examens)
+struct YearSelectionView: View {
+    @ObservedObject var appData: AppData
+    @State private var selectedYearId: String = ""
+    
+    var body: some View {
+        VStack(alignment: .leading) {
+            if appData.academicYearsTimeline.isEmpty {
+                Text("Aucune année académique créée. Ajoute-en une via le bouton en haut à droite !").foregroundColor(.secondary).padding()
+            } else {
+                Picker("Année", selection: $selectedYearId) {
+                    ForEach(appData.academicYearsTimeline) { year in Text(year.yearString).tag(year.id.uuidString) }
+                }.pickerStyle(.menu).padding(.horizontal)
+                
+                if let yid = UUID(uuidString: selectedYearId), let _ = appData.academicYearsTimeline.first(where: { $0.id == yid }) {
+                    YearDetailView(appData: appData, yearId: yid)
+                } else {
+                    Text("Sélectionne une année.").foregroundColor(.secondary).padding()
+                        .onAppear { if let first = appData.academicYearsTimeline.first { selectedYearId = first.id.uuidString } }
+                }
+            }
+        }
+    }
+}
+
+struct YearDetailView: View {
+    @ObservedObject var appData: AppData
+    let yearId: UUID
+    @State private var isShowingAddExam = false
+    @State private var zoomedItem: YearZoomType?
+    
+    var body: some View {
+        if let year = appData.academicYearsTimeline.first(where: { $0.id == yearId }) {
+            let stats = appData.yearStats(yearId: year.id)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 25) {
+                    HStack(spacing: 15) {
+                        RecapCard(title: "Crédits Validés (Uniques, sur l'année)", value: "\(String(format: "%.1f", stats.earned)) / \(String(format: "%.1f", stats.totalAttempted))", color: .green)
+                        RecapCard(title: "Moyenne Annuelle (Uniquement sessions de l'année)", value: String(format: "%.2f", stats.gpa), color: .blue)
+                        Button(action: { appData.academicYearsTimeline.removeAll(where: { $0.id == year.id }) }) { Image(systemName: "trash").foregroundColor(.red) }.buttonStyle(.bordered)
+                    }
+                    Divider()
+                    
+                    HStack { Text("Sessions d'Examens").font(.title2).bold(); Spacer(); Button(action: { isShowingAddExam = true }) { HStack { Image(systemName: "plus.circle.fill"); Text("Ajouter un résultat") } }.buttonStyle(.borderedProminent) }
                     
                     ExamSessionSection(appData: appData, year: year, sessionName: "Janvier", zoomAction: { zoomedItem = .examsJan })
                     ExamSessionSection(appData: appData, year: year, sessionName: "Juin", zoomAction: { zoomedItem = .examsJun })
                     ExamSessionSection(appData: appData, year: year, sessionName: "Août", zoomAction: { zoomedItem = .examsAug })
                     
                     Divider()
-                    if !year.courses.isEmpty || !(year.exams ?? []).isEmpty {
-                        Text("Analyses de l'année").font(.title2).bold()
-                        HStack(alignment: .top, spacing: 20) {
-                            if !year.courses.isEmpty {
-                                VStack(alignment: .leading) {
-                                    HStack { Text("Notes MAX par cours (PAE)").font(.headline); Spacer(); Button(action: { zoomedItem = .chartNotes }) { Image(systemName: "plus.magnifyingglass") } }
-                                    NotesChart(year: year).frame(height: 250)
-                                }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
-                                
-                                VStack(alignment: .leading) {
-                                    HStack { Text("Répartition des Crédits (PAE)").font(.headline); Spacer(); Button(action: { zoomedItem = .chartCat }) { Image(systemName: "plus.magnifyingglass") } }
-                                    CategoriesChart(courses: year.courses).frame(height: 250)
-                                }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
-                            }
-                        }
-                        
-                        if !(year.exams ?? []).isEmpty {
-                            Text("Résultats graphiques par Session").font(.title2).bold().padding(.top)
-                            HStack(alignment: .top, spacing: 15) {
-                                let jan = (year.exams ?? []).filter { $0.sessionName == "Janvier" }
-                                let jun = (year.exams ?? []).filter { $0.sessionName == "Juin" }
-                                let aug = (year.exams ?? []).filter { $0.sessionName == "Août" }
-                                
-                                if !jan.isEmpty { VStack { HStack { Text("Janvier").font(.headline); Spacer(); Button(action: { zoomedItem = .chartJan }) { Image(systemName: "plus.magnifyingglass") } }; SessionBarChart(appData: appData, exams: jan).frame(height: 200) }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12) }
-                                if !jun.isEmpty { VStack { HStack { Text("Juin").font(.headline); Spacer(); Button(action: { zoomedItem = .chartJun }) { Image(systemName: "plus.magnifyingglass") } }; SessionBarChart(appData: appData, exams: jun).frame(height: 200) }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12) }
-                                if !aug.isEmpty { VStack { HStack { Text("Août").font(.headline); Spacer(); Button(action: { zoomedItem = .chartAug }) { Image(systemName: "plus.magnifyingglass") } }; SessionBarChart(appData: appData, exams: aug).frame(height: 200) }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12) }
-                            }
+                    if !year.exams.isEmpty {
+                        Text("Résultats graphiques par Session").font(.title2).bold().padding(.top)
+                        HStack(alignment: .top, spacing: 15) {
+                            let jan = year.exams.filter { $0.sessionName == "Janvier" }; let jun = year.exams.filter { $0.sessionName == "Juin" }; let aug = year.exams.filter { $0.sessionName == "Août" }
+                            if !jan.isEmpty { VStack { HStack { Text("Janvier").font(.headline); Spacer(); Button(action: { zoomedItem = .chartJan }) { Image(systemName: "plus.magnifyingglass") } }; SessionBarChart(appData: appData, exams: jan).frame(height: 200) }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12) }
+                            if !jun.isEmpty { VStack { HStack { Text("Juin").font(.headline); Spacer(); Button(action: { zoomedItem = .chartJun }) { Image(systemName: "plus.magnifyingglass") } }; SessionBarChart(appData: appData, exams: jun).frame(height: 200) }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12) }
+                            if !aug.isEmpty { VStack { HStack { Text("Août").font(.headline); Spacer(); Button(action: { zoomedItem = .chartAug }) { Image(systemName: "plus.magnifyingglass") } }; SessionBarChart(appData: appData, exams: aug).frame(height: 200) }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12) }
                         }
                     }
                 }.padding()
             }
-            .sheet(isPresented: $isShowingAddCourse) { AddParcoursCourseSheet(appData: appData, isPresented: $isShowingAddCourse, yearId: year.id) }
             .sheet(isPresented: $isShowingAddExam) { AddExamResultSheet(appData: appData, isPresented: $isShowingAddExam, yearId: year.id) }
-            .sheet(item: $zoomedItem) { zoomType in ZoomModalView(appData: appData, year: year, zoomType: zoomType) }
+            .sheet(item: $zoomedItem) { zoomType in YearZoomModalView(appData: appData, year: year, zoomType: zoomType) }
         }
     }
 }
 
-// MARK: - TABLEAUX ET COMPOSANTS PARCOURS
+
+// MARK: - COMPOSANTS TABLEAUX
 struct RecapCard: View {
     let title: String; let value: String; let color: Color
-    var body: some View {
-        VStack { Text(title).font(.caption).foregroundColor(.secondary); Text(value).font(.title2).bold().foregroundColor(color) }.frame(maxWidth: .infinity).padding(.vertical, 12).background(Color(NSColor.controlBackgroundColor)).cornerRadius(8)
-    }
+    var body: some View { VStack { Text(title).font(.caption).foregroundColor(.secondary); Text(value).font(.title2).bold().foregroundColor(color) }.frame(maxWidth: .infinity).padding(.vertical, 12).background(Color(NSColor.controlBackgroundColor)).cornerRadius(8) }
 }
 
 struct SemesterTableContent: View {
     @ObservedObject var appData: AppData
-    let yearId: UUID
+    let programId: UUID
     let courses: [ParcoursCourse]
     @State private var courseToEdit: ParcoursCourse?
-    
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Text("Code").bold().frame(width: 80, alignment: .leading); Text("Nom du Cours").bold().frame(maxWidth: .infinity, alignment: .leading); Text("Crédits").bold().frame(width: 60, alignment: .center); Text("Catégorie").bold().frame(width: 120, alignment: .leading); Text("Note finale /20").bold().frame(width: 100, alignment: .center); Text("Tentatives").bold().frame(width: 80, alignment: .center); Text("").frame(width: 30) }
-            .padding(.horizontal, 10).padding(.vertical, 8).background(Color.gray.opacity(0.1))
-            
+            HStack { Text("Code").bold().frame(width: 80, alignment: .leading); Text("Nom du Cours").bold().frame(maxWidth: .infinity, alignment: .leading); Text("Crédits").bold().frame(width: 60, alignment: .center); Text("Catégorie").bold().frame(width: 120, alignment: .leading); Text("Note Initiale /20").bold().frame(width: 100, alignment: .center); Text("").frame(width: 30) }.padding(.horizontal, 10).padding(.vertical, 8).background(Color.gray.opacity(0.1))
             if courses.isEmpty { Text("Aucun cours encodé.").foregroundColor(.secondary).padding() } else {
                 ForEach(courses) { course in
                     HStack {
@@ -870,30 +916,24 @@ struct SemesterTableContent: View {
                         Text(String(format: "%.1f", course.credits)).frame(width: 60, alignment: .center)
                         Text(course.category).frame(width: 120, alignment: .leading).foregroundColor(.secondary)
                         Text(String(format: "%.2f", course.grade)).frame(width: 100, alignment: .center).foregroundColor(course.grade >= 10.0 ? .green : .red).bold()
-                        Text("\(course.attempts)").frame(width: 80, alignment: .center)
-                        Button(action: { appData.removeParcoursCourse(yearId: yearId, courseId: course.id) }) { Image(systemName: "trash").foregroundColor(.red) }.buttonStyle(.plain).frame(width: 30)
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 8).contentShape(Rectangle()).onTapGesture(count: 2) { courseToEdit = course }; Divider()
+                        Button(action: { appData.removeParcoursCourse(programId: programId, courseId: course.id) }) { Image(systemName: "trash").foregroundColor(.red) }.buttonStyle(.plain).frame(width: 30)
+                    }.padding(.horizontal, 10).padding(.vertical, 8).contentShape(Rectangle()).onTapGesture(count: 2) { courseToEdit = course }; Divider()
                 }
             }
         }.background(Color(NSColor.controlBackgroundColor)).cornerRadius(8).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
-        .sheet(item: $courseToEdit) { course in EditParcoursCourseSheet(appData: appData, yearId: yearId, course: course) }
+        .sheet(item: $courseToEdit) { course in EditParcoursCourseSheet(appData: appData, programId: programId, course: course) }
     }
 }
 
 struct ExamSessionSection: View {
     @ObservedObject var appData: AppData
-    let year: AcademicYear; let sessionName: String; let zoomAction: () -> Void
+    let year: AcademicYearTimeline; let sessionName: String; let zoomAction: () -> Void
     var body: some View {
-        let exams = (year.exams ?? []).filter { $0.sessionName == sessionName }
+        let exams = year.exams.filter { $0.sessionName == sessionName }
         var credits: Double = 0
         for ex in exams where ex.grade >= 10.0 { if let c = appData.getParcoursCourse(code: ex.courseCode) { credits += c.credits } }
         return VStack {
-            HStack {
-                Text("Session de \(sessionName)").font(.title3).bold(); Spacer()
-                Text("Crédits validés à cette session : \(String(format: "%.1f", credits))").font(.subheadline).foregroundColor(.green)
-                Button(action: zoomAction) { Image(systemName: "plus.magnifyingglass") }.padding(.leading, 5)
-            }
+            HStack { Text("Session de \(sessionName)").font(.title3).bold(); Spacer(); Text("Crédits validés à cette session : \(String(format: "%.1f", credits))").font(.subheadline).foregroundColor(.green); Button(action: zoomAction) { Image(systemName: "plus.magnifyingglass") }.padding(.leading, 5) }
             ExamSessionTableContent(appData: appData, yearId: year.id, exams: exams)
         }
     }
@@ -921,26 +961,24 @@ struct ExamSessionTableContent: View {
     }
 }
 
-// --- Les Graphiques Réutilisables ---
+// --- GRAPHIQUES PARCOURS ---
 
-struct NotesChart: View {
-    let year: AcademicYear
+struct ProgramNotesChart: View {
+    @ObservedObject var appData: AppData
+    let program: DegreeProgram
     @State private var hoveredCourse: String?
     
     var body: some View {
-        // LE GRAPH NE MONTRE STRICTEMENT QUE LES COURS DU PAE, MAIS AVEC LEUR MEILLEURE NOTE GLOBALE
-        let sortedCourses = year.courses.sorted(by: { $0.code < $1.code })
-        
+        let sortedCourses = program.courses.sorted(by: { $0.code < $1.code })
         return VStack {
-            if let h = hoveredCourse, let course = year.courses.first(where: { $0.code == h }) {
-                let bestG = year.bestGrade(for: course.code)
-                Text("\(h) - \(course.name) : \(String(format: "%.2f", bestG)) / 20")
-                    .font(.caption).bold().foregroundColor(.blue)
+            if let h = hoveredCourse, let course = program.courses.first(where: { $0.code == h }) {
+                let bestG = appData.bestGradeFor(courseCode: course.code)
+                Text("\(h) - \(course.name) : \(String(format: "%.2f", bestG)) / 20").font(.caption).bold().foregroundColor(.blue)
             } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
             
             Chart {
                 ForEach(sortedCourses) { c in
-                    let bestG = year.bestGrade(for: c.code)
+                    let bestG = appData.bestGradeFor(courseCode: c.code)
                     BarMark(x: .value("Cours", c.code), y: .value("Note MAX", bestG))
                         .foregroundStyle(bestG >= 10.0 ? Color.blue : Color.red.opacity(0.6))
                         .opacity(hoveredCourse == nil || hoveredCourse == c.code ? 1.0 : 0.4)
@@ -958,17 +996,13 @@ struct CategoriesChart: View {
             if #available(macOS 14.0, *) {
                 let groupedByCat = Dictionary(grouping: courses, by: { $0.category })
                 let data = groupedByCat.keys.map { (cat: $0, credits: groupedByCat[$0]!.reduce(0) { $0 + $1.credits }) }.sorted(by: { $0.cat < $1.cat })
-                let hoverText: String = {
-                    guard let angle = hoveredAngle else { return "Survolez pour le détail" }
-                    var sum: Double = 0
-                    for item in data { sum += item.credits; if angle <= sum { return "\(item.cat) : \(String(format: "%.1f", item.credits)) cr." } }
-                    return " "
-                }()
+                let hoverText: String = { guard let angle = hoveredAngle else { return "Survolez pour le détail" }; var sum: Double = 0; for item in data { sum += item.credits; if angle <= sum { return "\(item.cat) : \(String(format: "%.1f", item.credits)) cr." } }; return " " }()
                 VStack {
                     Text(hoverText).font(.caption).bold().foregroundColor(hoveredAngle == nil ? .secondary : .blue)
                     Chart {
                         ForEach(data, id: \.cat) { item in
-                            SectorMark(angle: .value("Crédits", item.credits), innerRadius: .ratio(0.5), angularInset: 1.5).foregroundStyle(by: .value("Catégorie", item.cat))
+                            // NOUVEAU: Utilisation de categoryColor() pour garantir la même couleur partout !
+                            SectorMark(angle: .value("Crédits", item.credits), innerRadius: .ratio(0.5), angularInset: 1.5).foregroundStyle(item.cat.categoryColor())
                         }
                     }.chartAngleSelection(value: $hoveredAngle)
                 }
@@ -999,26 +1033,41 @@ struct SessionBarChart: View {
     }
 }
 
-// MARK: - LE MODAL DE ZOOM (LOUPE)
-struct ZoomModalView: View {
+// MARK: - MODALS DE ZOOM (LOUPE)
+struct ProgramZoomModalView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var appData: AppData
-    let year: AcademicYear
-    let zoomType: ZoomType
+    let program: DegreeProgram
+    let zoomType: ProgramZoomType
     var body: some View {
         VStack {
             HStack { Spacer(); Button("Fermer la vue") { dismiss() }.buttonStyle(.borderedProminent) }.padding(.bottom, 10)
             switch zoomType {
-            case .tableQ1: Text("Premier Quadrimestre (Q1)").font(.title).bold(); SemesterTableContent(appData: appData, yearId: year.id, courses: year.courses.filter { $0.semester == "Q1" })
-            case .tableQ2: Text("Deuxième Quadrimestre (Q2)").font(.title).bold(); SemesterTableContent(appData: appData, yearId: year.id, courses: year.courses.filter { $0.semester == "Q2" })
-            case .examsJan: Text("Résultats Session Janvier").font(.title).bold(); ExamSessionTableContent(appData: appData, yearId: year.id, exams: (year.exams ?? []).filter{ $0.sessionName == "Janvier" })
-            case .examsJun: Text("Résultats Session Juin").font(.title).bold(); ExamSessionTableContent(appData: appData, yearId: year.id, exams: (year.exams ?? []).filter{ $0.sessionName == "Juin" })
-            case .examsAug: Text("Résultats Session Août").font(.title).bold(); ExamSessionTableContent(appData: appData, yearId: year.id, exams: (year.exams ?? []).filter{ $0.sessionName == "Août" })
-            case .chartNotes: Text("Notes MAX par cours (PAE)").font(.title).bold(); NotesChart(year: year).padding()
-            case .chartCat: Text("Répartition des crédits").font(.title).bold(); CategoriesChart(courses: year.courses).padding()
-            case .chartJan: Text("Notes de la session de Janvier").font(.title).bold(); SessionBarChart(appData: appData, exams: (year.exams ?? []).filter{ $0.sessionName == "Janvier" }).padding()
-            case .chartJun: Text("Notes de la session de Juin").font(.title).bold(); SessionBarChart(appData: appData, exams: (year.exams ?? []).filter{ $0.sessionName == "Juin" }).padding()
-            case .chartAug: Text("Notes de la session d'Août").font(.title).bold(); SessionBarChart(appData: appData, exams: (year.exams ?? []).filter{ $0.sessionName == "Août" }).padding()
+            case .tableQ1: Text("Premier Quadrimestre (Q1)").font(.title).bold(); SemesterTableContent(appData: appData, programId: program.id, courses: program.courses.filter { $0.semester == "Q1" })
+            case .tableQ2: Text("Deuxième Quadrimestre (Q2)").font(.title).bold(); SemesterTableContent(appData: appData, programId: program.id, courses: program.courses.filter { $0.semester == "Q2" })
+            case .chartNotes: Text("Notes MAX par cours de tous les temps").font(.title).bold(); ProgramNotesChart(appData: appData, program: program).padding()
+            case .chartCat: Text("Répartition des crédits").font(.title).bold(); CategoriesChart(courses: program.courses).padding()
+            }
+            Spacer()
+        }.padding().frame(minWidth: 800, minHeight: 600)
+    }
+}
+
+struct YearZoomModalView: View {
+    @Environment(\.dismiss) var dismiss
+    @ObservedObject var appData: AppData
+    let year: AcademicYearTimeline
+    let zoomType: YearZoomType
+    var body: some View {
+        VStack {
+            HStack { Spacer(); Button("Fermer la vue") { dismiss() }.buttonStyle(.borderedProminent) }.padding(.bottom, 10)
+            switch zoomType {
+            case .examsJan: Text("Résultats Session Janvier").font(.title).bold(); ExamSessionTableContent(appData: appData, yearId: year.id, exams: year.exams.filter{ $0.sessionName == "Janvier" })
+            case .examsJun: Text("Résultats Session Juin").font(.title).bold(); ExamSessionTableContent(appData: appData, yearId: year.id, exams: year.exams.filter{ $0.sessionName == "Juin" })
+            case .examsAug: Text("Résultats Session Août").font(.title).bold(); ExamSessionTableContent(appData: appData, yearId: year.id, exams: year.exams.filter{ $0.sessionName == "Août" })
+            case .chartJan: Text("Notes de la session de Janvier").font(.title).bold(); SessionBarChart(appData: appData, exams: year.exams.filter{ $0.sessionName == "Janvier" }).padding()
+            case .chartJun: Text("Notes de la session de Juin").font(.title).bold(); SessionBarChart(appData: appData, exams: year.exams.filter{ $0.sessionName == "Juin" }).padding()
+            case .chartAug: Text("Notes de la session d'Août").font(.title).bold(); SessionBarChart(appData: appData, exams: year.exams.filter{ $0.sessionName == "Août" }).padding()
             }
             Spacer()
         }.padding().frame(minWidth: 800, minHeight: 600)
@@ -1026,48 +1075,53 @@ struct ZoomModalView: View {
 }
 
 // MARK: - FORMULAIRES PARCOURS
-struct AddAcademicYearSheet: View {
+
+struct AddDegreeProgramSheet: View {
     @ObservedObject var appData: AppData
     @Binding var isPresented: Bool
-    @Binding var selectedTab: String
-    @State private var newYearString = ""
-    @State private var newLevel = ""
-    @State private var newSchool = ""
+    @State private var newName = ""; @State private var newSchool = ""
     var body: some View {
         VStack(spacing: 20) {
-            Text("Nouvelle Année Académique").font(.headline)
-            TextField("Année (ex: 2021-2022)", text: $newYearString).textFieldStyle(.roundedBorder)
-            TextField("Niveau (ex: Bac 1, Master 2)", text: $newLevel).textFieldStyle(.roundedBorder)
+            Text("Nouveau Programme (PAE)").font(.headline)
+            TextField("Nom (ex: BAC 1 Informatique)", text: $newName).textFieldStyle(.roundedBorder)
             TextField("École / Unif (ex: UCLouvain)", text: $newSchool).textFieldStyle(.roundedBorder)
             HStack {
-                Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Ajouter") {
-                    if !newYearString.isEmpty && !newLevel.isEmpty {
-                        let newYear = AcademicYear(yearString: newYearString, level: newLevel, school: newSchool, courses: [], exams: [])
-                        appData.academicYears.append(newYear)
-                        selectedTab = newYear.id.uuidString; isPresented = false
-                    }
-                }.buttonStyle(.borderedProminent).disabled(newYearString.isEmpty || newLevel.isEmpty).keyboardShortcut(.defaultAction)
+                Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction); Spacer()
+                Button("Ajouter") { if !newName.isEmpty { appData.degreePrograms.append(DegreeProgram(name: newName, school: newSchool, courses: [])); isPresented = false } }.buttonStyle(.borderedProminent).disabled(newName.isEmpty).keyboardShortcut(.defaultAction)
             }
         }.padding().frame(width: 300)
     }
 }
 
+struct AddAcademicYearTimelineSheet: View {
+    @ObservedObject var appData: AppData
+    @Binding var isPresented: Bool
+    @State private var newYearString = ""
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Nouvelle Année Académique").font(.headline)
+            TextField("Année (ex: 2021-2022)", text: $newYearString).textFieldStyle(.roundedBorder)
+            HStack {
+                Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction); Spacer()
+                Button("Ajouter") { if !newYearString.isEmpty { appData.academicYearsTimeline.append(AcademicYearTimeline(yearString: newYearString, exams: [])); isPresented = false } }.buttonStyle(.borderedProminent).disabled(newYearString.isEmpty).keyboardShortcut(.defaultAction)
+            }
+        }.padding().frame(width: 300)
+    }
+}
+
+
 struct AddParcoursCourseSheet: View {
     @ObservedObject var appData: AppData
     @Binding var isPresented: Bool
-    let yearId: UUID
-    @State private var code = ""; @State private var name = ""; @State private var credits: Double = 5.0
-    @State private var category = ""; @State private var grade: Double = 10.0; @State private var attempts: Int = 1; @State private var semester = "Q1"
+    let programId: UUID
+    @State private var code = ""; @State private var name = ""; @State private var credits: Double = 5.0; @State private var category = ""; @State private var grade: Double = 10.0; @State private var attempts: Int = 1; @State private var semester = "Q1"
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Ajouter un cours au bilan").font(.headline).frame(maxWidth: .infinity, alignment: .center)
+            Text("Ajouter un cours au programme").font(.headline).frame(maxWidth: .infinity, alignment: .center)
             HStack { TextField("Code (ex: LINFO1101)", text: $code).textFieldStyle(.roundedBorder); Picker("", selection: $semester) { ForEach(["Q1", "Q2"], id: \.self) { Text($0) } }.frame(width: 80) }
-            TextField("Nom complet du cours", text: $name).textFieldStyle(.roundedBorder)
-            TextField("Catégorie (ex: Informatique, Langues...)", text: $category).textFieldStyle(.roundedBorder)
-            HStack { VStack(alignment: .leading) { Text("Crédits (ECTS)").font(.caption); TextField("", value: $credits, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Note Finale (/20)").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Tentatives").font(.caption); Stepper("\(attempts)", value: $attempts, in: 1...10) } }
-            HStack { Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction); Spacer(); Button("Enregistrer") { if !code.isEmpty && !name.isEmpty { appData.addParcoursCourse(yearId: yearId, course: ParcoursCourse(code: code, name: name, credits: credits, category: category, grade: grade, attempts: attempts, semester: semester)); isPresented = false } }.buttonStyle(.borderedProminent).disabled(code.isEmpty || name.isEmpty).keyboardShortcut(.defaultAction) }.padding(.top, 10)
+            TextField("Nom complet du cours", text: $name).textFieldStyle(.roundedBorder); TextField("Catégorie (ex: Informatique, Langues...)", text: $category).textFieldStyle(.roundedBorder)
+            HStack { VStack(alignment: .leading) { Text("Crédits (ECTS)").font(.caption); TextField("", value: $credits, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Note Initiale (/20)").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) } }
+            HStack { Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction); Spacer(); Button("Enregistrer") { if !code.isEmpty && !name.isEmpty { appData.addParcoursCourse(programId: programId, course: ParcoursCourse(code: code, name: name, credits: credits, category: category, grade: grade, attempts: attempts, semester: semester)); isPresented = false } }.buttonStyle(.borderedProminent).disabled(code.isEmpty || name.isEmpty).keyboardShortcut(.defaultAction) }.padding(.top, 10)
         }.padding().frame(width: 400)
     }
 }
@@ -1075,12 +1129,11 @@ struct AddParcoursCourseSheet: View {
 struct EditParcoursCourseSheet: View {
     @ObservedObject var appData: AppData
     @Environment(\.dismiss) var dismiss
-    let yearId: UUID
-    let course: ParcoursCourse
+    let programId: UUID; let course: ParcoursCourse
     @State private var code: String; @State private var name: String; @State private var credits: Double; @State private var category: String; @State private var grade: Double; @State private var attempts: Int; @State private var semester: String
     
-    init(appData: AppData, yearId: UUID, course: ParcoursCourse) {
-        self.appData = appData; self.yearId = yearId; self.course = course
+    init(appData: AppData, programId: UUID, course: ParcoursCourse) {
+        self.appData = appData; self.programId = programId; self.course = course
         _code = State(initialValue: course.code); _name = State(initialValue: course.name); _credits = State(initialValue: course.credits); _category = State(initialValue: course.category); _grade = State(initialValue: course.grade); _attempts = State(initialValue: course.attempts); _semester = State(initialValue: course.semester)
     }
     var body: some View {
@@ -1088,8 +1141,8 @@ struct EditParcoursCourseSheet: View {
             Text("Modifier le cours").font(.headline).frame(maxWidth: .infinity, alignment: .center)
             HStack { TextField("Code", text: $code).textFieldStyle(.roundedBorder); Picker("", selection: $semester) { ForEach(["Q1", "Q2"], id: \.self) { Text($0) } }.frame(width: 80) }
             TextField("Nom complet", text: $name).textFieldStyle(.roundedBorder); TextField("Catégorie", text: $category).textFieldStyle(.roundedBorder)
-            HStack { VStack(alignment: .leading) { Text("Crédits").font(.caption); TextField("", value: $credits, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Note (/20)").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Tentatives").font(.caption); Stepper("\(attempts)", value: $attempts, in: 1...10) } }
-            HStack { Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Sauvegarder") { if !code.isEmpty && !name.isEmpty { var c = course; c.code = code; c.name = name; c.credits = credits; c.category = category; c.grade = grade; c.attempts = attempts; c.semester = semester; appData.updateParcoursCourse(yearId: yearId, course: c); dismiss() } }.buttonStyle(.borderedProminent).disabled(code.isEmpty || name.isEmpty).keyboardShortcut(.defaultAction) }.padding(.top, 10)
+            HStack { VStack(alignment: .leading) { Text("Crédits").font(.caption); TextField("", value: $credits, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Note Initiale (/20)").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) } }
+            HStack { Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Sauvegarder") { if !code.isEmpty && !name.isEmpty { var c = course; c.code = code; c.name = name; c.credits = credits; c.category = category; c.grade = grade; c.attempts = attempts; c.semester = semester; appData.updateParcoursCourse(programId: programId, course: c); dismiss() } }.buttonStyle(.borderedProminent).disabled(code.isEmpty || name.isEmpty).keyboardShortcut(.defaultAction) }.padding(.top, 10)
         }.padding().frame(width: 400)
     }
 }
@@ -1100,28 +1153,21 @@ struct AddExamResultSheet: View {
     @Binding var isPresented: Bool
     let yearId: UUID
     @State private var sessionName = "Janvier"; @State private var courseCode = ""; @State private var grade: Double = 10.0; @State private var attempt: Int = 1
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             Text("Ajouter un résultat d'examen").font(.headline).frame(maxWidth: .infinity, alignment: .center)
             Picker("Session", selection: $sessionName) { ForEach(["Janvier", "Juin", "Août"], id: \.self) { Text($0) } }.pickerStyle(.segmented)
-            
-            // Le Picker intelligent qui lie Exam et Cours de toutes les années confondues
             VStack(alignment: .leading) {
                 Text("Quel cours as-tu passé ?").font(.caption)
-                Picker("", selection: $courseCode) {
-                    Text("Sélectionne un cours").tag("")
-                    ForEach(appData.allParcoursCourses()) { c in Text("\(c.code) - \(c.name)").tag(c.code) }
-                }.pickerStyle(.menu).padding(5).background(Color(NSColor.controlBackgroundColor)).cornerRadius(5)
+                Picker("", selection: $courseCode) { Text("Sélectionne un cours").tag(""); ForEach(appData.allParcoursCourses()) { c in Text("\(c.code) - \(c.name)").tag(c.code) } }.pickerStyle(.menu).padding(5).background(Color(NSColor.controlBackgroundColor)).cornerRadius(5)
             }
-            
             HStack { VStack(alignment: .leading) { Text("Note Obtenue (/20)").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Quantième tentative ?").font(.caption); Stepper("\(attempt)", value: $attempt, in: 1...10) } }
             HStack { Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction); Spacer(); Button("Ajouter") { if !courseCode.isEmpty { appData.addExamResult(yearId: yearId, exam: ExamResult(sessionName: sessionName, courseCode: courseCode, grade: grade, attempt: attempt)); isPresented = false } }.buttonStyle(.borderedProminent).disabled(courseCode.isEmpty).keyboardShortcut(.defaultAction) }.padding(.top, 10)
         }.padding().frame(width: 400)
     }
 }
 
-// MARK: - AUTRES VUES EXISTANTES (Général, Planning, Detail Cours)
+// MARK: - AUTRES VUES EXISTANTES (Général, Planning, MenuBar, etc...)
 
 struct AddCourseSheet: View {
     @ObservedObject var appData: AppData
