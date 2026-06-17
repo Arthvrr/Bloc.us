@@ -18,12 +18,26 @@ extension NumberFormatter {
 
 // MARK: - EXTENSIONS COULEURS (Uniformisation des catégories)
 extension String {
-    // Génère une couleur constante et identique basée sur le texte de la catégorie
+    // Génère une couleur constante basée sur des mots-clés ou un hash robuste
     func categoryColor() -> Color {
-        let colors: [Color] = [.blue, .green, .orange, .purple, .pink, .teal, .indigo, .mint, .cyan, .brown]
-        var sum = 0
-        for char in self.utf8 { sum += Int(char) }
-        return colors[sum % colors.count]
+        let normalized = self.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 1. Assignations logiques prédéfinies
+        if normalized.contains("info") || normalized.contains("programmation") { return .blue }
+        if normalized.contains("math") || normalized.contains("algèbre") { return .red }
+        if normalized.contains("langue") || normalized.contains("anglais") { return .yellow }
+        if normalized.contains("science") || normalized.contains("physique") { return .cyan }
+        if normalized.contains("éco") || normalized.contains("gestion") { return .orange }
+        if normalized.contains("droit") || normalized.contains("humain") || normalized.contains("philo") { return .purple }
+        if normalized.contains("projet") { return .green }
+        
+        // 2. Hash robuste (DJB2) pour les catégories inconnues
+        let colors: [Color] = [.blue, .green, .red, .orange, .purple, .pink, .teal, .indigo, .mint, .cyan, .brown]
+        var hash = 5381
+        for char in self.utf8 {
+            hash = ((hash << 5) &+ hash) &+ Int(char)
+        }
+        return colors[abs(hash) % colors.count]
     }
 }
 
@@ -126,7 +140,6 @@ struct ExamResult: Identifiable, Codable {
     var attempt: Int
 }
 
-// 1. Le Programme (Le PAE, ex: BAC 1)
 struct DegreeProgram: Identifiable, Codable {
     var id = UUID()
     var name: String // "BAC 1"
@@ -134,7 +147,6 @@ struct DegreeProgram: Identifiable, Codable {
     var courses: [ParcoursCourse]
 }
 
-// 2. L'Année Chronologique (ex: 2021-2022)
 struct AcademicYearTimeline: Identifiable, Codable {
     var id = UUID()
     var yearString: String // "2021-2022"
@@ -158,7 +170,7 @@ enum GeneralZoomType: String, Identifiable {
 }
 
 enum DashboardZoomType: String, Identifiable {
-    case chartEvolution
+    case chartEvolution, chartGlobalCat, chartHistogram, chartSessions
     var id: String { self.rawValue }
 }
 
@@ -167,7 +179,6 @@ class AppData: ObservableObject {
     @Published var courses: [String: Course] = [:] { didSet { save() } }
     @Published var schedule: [String: [CourseEvent]] = [:] { didSet { save() } }
     
-    // NOUVELLES VARIABLES PARCOURS
     @Published var degreePrograms: [DegreeProgram] = [] { didSet { save() } }
     @Published var academicYearsTimeline: [AcademicYearTimeline] = [] { didSet { save() } }
     
@@ -223,7 +234,18 @@ class AppData: ObservableObject {
         return nil
     }
     
-    // Trouve la meilleure note pour un cours de tous les temps (Base + Tous les examens)
+    func totalAttemptsFor(courseCode: String) -> Int {
+        var maxAttempt = 0
+        for year in academicYearsTimeline {
+            let attempts = year.exams.filter { $0.courseCode == courseCode }.map { $0.attempt }
+            if let m = attempts.max(), m > maxAttempt { maxAttempt = m }
+        }
+        if maxAttempt == 0 {
+            return getParcoursCourse(code: courseCode)?.attempts ?? 1
+        }
+        return maxAttempt
+    }
+    
     func bestGradeFor(courseCode: String) -> Double {
         var bestG: Double = 0
         if let baseCourse = getParcoursCourse(code: courseCode) {
@@ -427,7 +449,7 @@ class AppData: ObservableObject {
     }
 }
 
-// MARK: - MAIN VIEW (Navigation)
+// MARK: - MAIN VIEW
 struct ContentView: View {
     @StateObject var appData = AppData()
     @State private var selection: String? = "Général"
@@ -555,6 +577,7 @@ struct GeneralView: View {
     }
 }
 
+// Composants Chart Isolés avec HOVER pour la page Général
 struct GeneralEquilibreChart: View {
     @ObservedObject var appData: AppData
     @State private var hoveredCourse: String?
@@ -562,6 +585,7 @@ struct GeneralEquilibreChart: View {
         VStack {
             if let h = hoveredCourse { Text("\(h) : \(String(format: "%.1f", appData.computeProgress(for: h) * 100)) % accompli").font(.caption).bold().foregroundColor(.blue) }
             else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
+            
             Chart {
                 ForEach(appData.courses.keys.sorted(), id: \.self) { c in
                     BarMark(x: .value("Progression", appData.computeProgress(for: c) * 100), y: .value("Cours", c))
@@ -718,10 +742,116 @@ struct ParcoursDashboardView: View {
                         HStack { Text("Évolution de la moyenne annuelle (par Sessions)").font(.headline); Spacer(); Button(action: { zoomedItem = .chartEvolution }) { Image(systemName: "plus.magnifyingglass") } }
                         DashboardEvolutionChart(appData: appData).frame(height: 250)
                     }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                    
+                    HStack(alignment: .top, spacing: 20) {
+                        VStack(alignment: .leading) {
+                            HStack { Text("Répartition Globale des Crédits").font(.headline); Spacer(); Button(action: { zoomedItem = .chartGlobalCat }) { Image(systemName: "plus.magnifyingglass") } }
+                            GlobalCategoriesChart(appData: appData).frame(height: 250)
+                        }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                        
+                        VStack(alignment: .leading) {
+                            HStack { Text("Histogramme des Notes").font(.headline); Spacer(); Button(action: { zoomedItem = .chartHistogram }) { Image(systemName: "plus.magnifyingglass") } }
+                            GlobalGradeHistogram(appData: appData).frame(height: 250)
+                        }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                    }
+                    
+                    VStack(alignment: .leading) {
+                        HStack { Text("Taux de réussite par Session").font(.headline); Spacer(); Button(action: { zoomedItem = .chartSessions }) { Image(systemName: "plus.magnifyingglass") } }
+                        GlobalSessionSuccessChart(appData: appData).frame(height: 250)
+                    }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
                 }
             }.padding()
         }
         .sheet(item: $zoomedItem) { zItem in DashboardZoomModalView(appData: appData, zoomType: zItem) }
+    }
+}
+
+// Graphiques additionnels pour le Dashboard Global
+struct GlobalCategoriesChart: View {
+    @ObservedObject var appData: AppData
+    @State private var hoveredAngle: Double?
+    var body: some View {
+        Group {
+            if #available(macOS 14.0, *) {
+                let allCourses = appData.allParcoursCourses().filter { appData.bestGradeFor(courseCode: $0.code) >= 10.0 }
+                let groupedByCat = Dictionary(grouping: allCourses, by: { $0.category })
+                let data = groupedByCat.keys.map { (cat: $0, credits: groupedByCat[$0]!.reduce(0) { $0 + $1.credits }) }.sorted(by: { $0.cat < $1.cat })
+                let hoverText: String = { guard let angle = hoveredAngle else { return "Survolez pour le détail" }; var sum: Double = 0; for item in data { sum += item.credits; if angle <= sum { return "\(item.cat) : \(String(format: "%.1f", item.credits)) cr." } }; return " " }()
+                VStack {
+                    if data.isEmpty { Text("Aucun crédit validé.").foregroundColor(.secondary) }
+                    else {
+                        Text(hoverText).font(.caption).bold().foregroundColor(hoveredAngle == nil ? .secondary : .blue)
+                        Chart {
+                            ForEach(data, id: \.cat) { item in
+                                SectorMark(angle: .value("Crédits", item.credits), innerRadius: .ratio(0.5), angularInset: 1.5).foregroundStyle(item.cat.categoryColor())
+                            }
+                        }.chartAngleSelection(value: $hoveredAngle)
+                    }
+                }
+            } else { Text("Nécessite macOS 14+") }
+        }
+    }
+}
+
+struct GlobalGradeHistogram: View {
+    @ObservedObject var appData: AppData
+    @State private var hoveredBin: String?
+    
+    var body: some View {
+        let grades = appData.allParcoursCourses().map { appData.bestGradeFor(courseCode: $0.code) }.filter { $0 > 0 }
+        let bins: [(String, Int)] = [
+            ("0-9", grades.filter { $0 < 10 }.count),
+            ("10-12", grades.filter { $0 >= 10 && $0 < 13 }.count),
+            ("13-14", grades.filter { $0 >= 13 && $0 < 15 }.count),
+            ("15-16", grades.filter { $0 >= 15 && $0 < 17 }.count),
+            ("17-20", grades.filter { $0 >= 17 }.count)
+        ]
+        
+        return VStack {
+            if let h = hoveredBin, let b = bins.first(where: { $0.0 == h }) {
+                Text("\(h)/20 : \(b.1) cours").font(.caption).bold().foregroundColor(.blue)
+            } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
+            
+            Chart {
+                ForEach(bins, id: \.0) { bin in
+                    BarMark(x: .value("Tranche", bin.0), y: .value("Nombre de cours", bin.1))
+                        .foregroundStyle(Color.purple)
+                        .opacity(hoveredBin == nil || hoveredBin == bin.0 ? 1.0 : 0.4)
+                }
+            }
+            .chartXSelection(value: $hoveredBin)
+        }
+    }
+}
+
+struct GlobalSessionSuccessChart: View {
+    @ObservedObject var appData: AppData
+    @State private var hoveredSession: String?
+    
+    var body: some View {
+        let allExams = appData.academicYearsTimeline.flatMap { $0.exams }
+        let sessions = ["Janvier", "Juin", "Août"]
+        
+        return VStack {
+            if let h = hoveredSession {
+                let sExams = allExams.filter { $0.sessionName == h }
+                let passed = sExams.filter { $0.grade >= 10.0 }.count
+                Text("\(h) : \(passed) réussis, \(sExams.count - passed) échecs").font(.caption).bold().foregroundColor(.blue)
+            } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
+            
+            Chart {
+                ForEach(sessions, id: \.self) { session in
+                    let sessionExams = allExams.filter { $0.sessionName == session }
+                    let passed = sessionExams.filter { $0.grade >= 10.0 }.count
+                    let failed = sessionExams.count - passed
+                    
+                    BarMark(x: .value("Session", session), y: .value("Examens", passed))
+                        .foregroundStyle(Color.green).opacity(hoveredSession == nil || hoveredSession == session ? 1.0 : 0.4)
+                    BarMark(x: .value("Session", session), y: .value("Examens", failed))
+                        .foregroundStyle(Color.red).opacity(hoveredSession == nil || hoveredSession == session ? 1.0 : 0.4)
+                }
+            }.chartXSelection(value: $hoveredSession)
+        }
     }
 }
 
@@ -755,6 +885,9 @@ struct DashboardZoomModalView: View {
             HStack { Spacer(); Button("Fermer la vue") { dismiss() }.buttonStyle(.borderedProminent) }.padding(.bottom, 10)
             switch zoomType {
             case .chartEvolution: Text("Évolution de la moyenne annuelle").font(.title).bold(); DashboardEvolutionChart(appData: appData).padding()
+            case .chartGlobalCat: Text("Répartition Globale des Crédits").font(.title).bold(); GlobalCategoriesChart(appData: appData).padding()
+            case .chartHistogram: Text("Histogramme des Notes").font(.title).bold(); GlobalGradeHistogram(appData: appData).padding()
+            case .chartSessions: Text("Taux de réussite par Session").font(.title).bold(); GlobalSessionSuccessChart(appData: appData).padding()
             }
             Spacer()
         }.padding().frame(minWidth: 800, minHeight: 600)
@@ -907,7 +1040,7 @@ struct SemesterTableContent: View {
     @State private var courseToEdit: ParcoursCourse?
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Text("Code").bold().frame(width: 80, alignment: .leading); Text("Nom du Cours").bold().frame(maxWidth: .infinity, alignment: .leading); Text("Crédits").bold().frame(width: 60, alignment: .center); Text("Catégorie").bold().frame(width: 120, alignment: .leading); Text("Note Initiale /20").bold().frame(width: 100, alignment: .center); Text("").frame(width: 30) }.padding(.horizontal, 10).padding(.vertical, 8).background(Color.gray.opacity(0.1))
+            HStack { Text("Code").bold().frame(width: 80, alignment: .leading); Text("Nom du Cours").bold().frame(maxWidth: .infinity, alignment: .leading); Text("Crédits").bold().frame(width: 60, alignment: .center); Text("Catégorie").bold().frame(width: 120, alignment: .leading); Text("Note /20").bold().frame(width: 100, alignment: .center); Text("Tentatives").bold().frame(width: 80, alignment: .center); Text("").frame(width: 30) }.padding(.horizontal, 10).padding(.vertical, 8).background(Color.gray.opacity(0.1))
             if courses.isEmpty { Text("Aucun cours encodé.").foregroundColor(.secondary).padding() } else {
                 ForEach(courses) { course in
                     HStack {
@@ -916,6 +1049,8 @@ struct SemesterTableContent: View {
                         Text(String(format: "%.1f", course.credits)).frame(width: 60, alignment: .center)
                         Text(course.category).frame(width: 120, alignment: .leading).foregroundColor(.secondary)
                         Text(String(format: "%.2f", course.grade)).frame(width: 100, alignment: .center).foregroundColor(course.grade >= 10.0 ? .green : .red).bold()
+                        // TENTATIVES CALCULEES DYNAMIQUEMENT
+                        Text("\(appData.totalAttemptsFor(courseCode: course.code))").frame(width: 80, alignment: .center)
                         Button(action: { appData.removeParcoursCourse(programId: programId, courseId: course.id) }) { Image(systemName: "trash").foregroundColor(.red) }.buttonStyle(.plain).frame(width: 30)
                     }.padding(.horizontal, 10).padding(.vertical, 8).contentShape(Rectangle()).onTapGesture(count: 2) { courseToEdit = course }; Divider()
                 }
