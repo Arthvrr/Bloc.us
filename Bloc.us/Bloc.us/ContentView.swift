@@ -16,28 +16,42 @@ extension NumberFormatter {
     }
 }
 
-// MARK: - EXTENSIONS COULEURS (Uniformisation des catégories)
-extension String {
-    // Génère une couleur constante basée sur des mots-clés ou un hash robuste
-    func categoryColor() -> Color {
-        let normalized = self.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+// MARK: - GESTIONNAIRE DE COULEURS POUR CATEGORIES
+struct CategoryColorManager {
+    static var colorMap: [String: Color] = [:]
+    static var currentIndex = 0
+    
+    // Tableau de 20 couleurs distinctes
+    static let palette: [Color] = [
+        .blue, .green, .red, .orange, .purple,
+        .pink, .teal, .indigo, .mint, .cyan,
+        .yellow, .brown,
+        Color(hex: "#FF5733"), Color(hex: "#33FF57"), Color(hex: "#3357FF"),
+        Color(hex: "#F333FF"), Color(hex: "#FF33A8"), Color(hex: "#33FFF3"),
+        Color(hex: "#FFC733"), Color(hex: "#A833FF")
+    ]
+    
+    static func color(for category: String) -> Color {
+        let normalized = category.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // 1. Assignations logiques prédéfinies
-        if normalized.contains("info") || normalized.contains("programmation") { return .blue }
-        if normalized.contains("math") || normalized.contains("algèbre") { return .red }
-        if normalized.contains("langue") || normalized.contains("anglais") { return .yellow }
-        if normalized.contains("science") || normalized.contains("physique") { return .cyan }
-        if normalized.contains("éco") || normalized.contains("gestion") { return .orange }
-        if normalized.contains("droit") || normalized.contains("humain") || normalized.contains("philo") { return .purple }
-        if normalized.contains("projet") { return .green }
-        
-        // 2. Hash robuste (DJB2) pour les catégories inconnues
-        let colors: [Color] = [.blue, .green, .red, .orange, .purple, .pink, .teal, .indigo, .mint, .cyan, .brown]
-        var hash = 5381
-        for char in self.utf8 {
-            hash = ((hash << 5) &+ hash) &+ Int(char)
+        // Si la catégorie a déjà une couleur assignée, on la réutilise
+        if let existingColor = colorMap[normalized] {
+            return existingColor
         }
-        return colors[abs(hash) % colors.count]
+        
+        // Sinon on lui assigne la prochaine couleur du tableau de 20
+        let newColor = palette[currentIndex % palette.count]
+        colorMap[normalized] = newColor
+        currentIndex += 1
+        
+        return newColor
+    }
+}
+
+// MARK: - EXTENSIONS COULEURS
+extension String {
+    func categoryColor() -> Color {
+        return CategoryColorManager.color(for: self)
     }
 }
 
@@ -127,6 +141,7 @@ struct ParcoursCourse: Identifiable, Codable {
     var name: String
     var credits: Double
     var category: String
+    var option: String?
     var grade: Double
     var attempts: Int
     var semester: String // "Q1" ou "Q2"
@@ -1249,14 +1264,40 @@ struct AddParcoursCourseSheet: View {
     @ObservedObject var appData: AppData
     @Binding var isPresented: Bool
     let programId: UUID
-    @State private var code = ""; @State private var name = ""; @State private var credits: Double = 5.0; @State private var category = ""; @State private var grade: Double = 10.0; @State private var attempts: Int = 1; @State private var semester = "Q1"
+    
+    @State private var code = ""
+    @State private var name = ""
+    @State private var credits: Double = 5.0
+    @State private var category = ""
+    @State private var option = "Tronc commun" // 1. LA VARIABLE
+    @State private var grade: Double = 10.0
+    @State private var attempts: Int = 1
+    @State private var semester = "Q1"
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             Text("Ajouter un cours au programme").font(.headline).frame(maxWidth: .infinity, alignment: .center)
             HStack { TextField("Code (ex: LINFO1101)", text: $code).textFieldStyle(.roundedBorder); Picker("", selection: $semester) { ForEach(["Q1", "Q2"], id: \.self) { Text($0) } }.frame(width: 80) }
-            TextField("Nom complet du cours", text: $name).textFieldStyle(.roundedBorder); TextField("Catégorie (ex: Informatique, Langues...)", text: $category).textFieldStyle(.roundedBorder)
+            TextField("Nom complet du cours", text: $name).textFieldStyle(.roundedBorder)
+            
+            // 2. LE CHAMP TEXTE
+            HStack {
+                TextField("Catégorie (ex: Informatique)", text: $category).textFieldStyle(.roundedBorder)
+                TextField("Option (ex: Tronc commun, IA...)", text: $option).textFieldStyle(.roundedBorder)
+            }
+            
             HStack { VStack(alignment: .leading) { Text("Crédits (ECTS)").font(.caption); TextField("", value: $credits, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Note Initiale (/20)").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) } }
-            HStack { Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction); Spacer(); Button("Enregistrer") { if !code.isEmpty && !name.isEmpty { appData.addParcoursCourse(programId: programId, course: ParcoursCourse(code: code, name: name, credits: credits, category: category, grade: grade, attempts: attempts, semester: semester)); isPresented = false } }.buttonStyle(.borderedProminent).disabled(code.isEmpty || name.isEmpty).keyboardShortcut(.defaultAction) }.padding(.top, 10)
+            HStack {
+                Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Enregistrer") {
+                    if !code.isEmpty && !name.isEmpty {
+                        // 3. LA SAUVEGARDE
+                        appData.addParcoursCourse(programId: programId, course: ParcoursCourse(code: code, name: name, credits: credits, category: category, option: option, grade: grade, attempts: attempts, semester: semester))
+                        isPresented = false
+                    }
+                }.buttonStyle(.borderedProminent).disabled(code.isEmpty || name.isEmpty).keyboardShortcut(.defaultAction)
+            }.padding(.top, 10)
         }.padding().frame(width: 400)
     }
 }
@@ -1265,19 +1306,43 @@ struct EditParcoursCourseSheet: View {
     @ObservedObject var appData: AppData
     @Environment(\.dismiss) var dismiss
     let programId: UUID; let course: ParcoursCourse
-    @State private var code: String; @State private var name: String; @State private var credits: Double; @State private var category: String; @State private var grade: Double; @State private var attempts: Int; @State private var semester: String
+    
+    @State private var code: String; @State private var name: String; @State private var credits: Double; @State private var category: String;
+    @State private var option: String // 1. LA VARIABLE
+    @State private var grade: Double; @State private var attempts: Int; @State private var semester: String
     
     init(appData: AppData, programId: UUID, course: ParcoursCourse) {
         self.appData = appData; self.programId = programId; self.course = course
-        _code = State(initialValue: course.code); _name = State(initialValue: course.name); _credits = State(initialValue: course.credits); _category = State(initialValue: course.category); _grade = State(initialValue: course.grade); _attempts = State(initialValue: course.attempts); _semester = State(initialValue: course.semester)
+        _code = State(initialValue: course.code); _name = State(initialValue: course.name); _credits = State(initialValue: course.credits); _category = State(initialValue: course.category);
+        _option = State(initialValue: course.option ?? "Tronc commun") // 2. L'INITIALISATION
+        _grade = State(initialValue: course.grade); _attempts = State(initialValue: course.attempts); _semester = State(initialValue: course.semester)
     }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Modifier le cours").font(.headline).frame(maxWidth: .infinity, alignment: .center)
-            HStack { TextField("Code", text: $code).textFieldStyle(.roundedBorder); Picker("", selection: $semester) { ForEach(["Q1", "Q2"], id: \.self) { Text($0) } }.frame(width: 80) }
-            TextField("Nom complet", text: $name).textFieldStyle(.roundedBorder); TextField("Catégorie", text: $category).textFieldStyle(.roundedBorder)
-            HStack { VStack(alignment: .leading) { Text("Crédits").font(.caption); TextField("", value: $credits, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Note Initiale (/20)").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) } }
-            HStack { Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button("Sauvegarder") { if !code.isEmpty && !name.isEmpty { var c = course; c.code = code; c.name = name; c.credits = credits; c.category = category; c.grade = grade; c.attempts = attempts; c.semester = semester; appData.updateParcoursCourse(programId: programId, course: c); dismiss() } }.buttonStyle(.borderedProminent).disabled(code.isEmpty || name.isEmpty).keyboardShortcut(.defaultAction) }.padding(.top, 10)
+            Text("Modifier Cours").font(.headline).frame(maxWidth: .infinity, alignment: .center)
+            HStack { TextField("Code", text: $code).textFieldStyle(.roundedBorder); Picker("", selection: $semester){ Text("Q1").tag("Q1"); Text("Q2").tag("Q2") }.frame(width: 80) }
+            TextField("Nom complet", text: $name).textFieldStyle(.roundedBorder)
+            
+            // 3. LE CHAMP TEXTE
+            HStack {
+                TextField("Catégorie", text: $category).textFieldStyle(.roundedBorder)
+                TextField("Option", text: $option).textFieldStyle(.roundedBorder)
+            }
+            
+            HStack { VStack(alignment: .leading) { Text("Crédits").font(.caption); TextField("", value: $credits, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Note Initiale").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) } }
+            HStack {
+                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Sauvegarder") {
+                    if !code.isEmpty && !name.isEmpty {
+                        var c = course; c.code = code; c.name = name; c.credits = credits; c.category = category;
+                        c.option = option // 4. LA MISE A JOUR
+                        c.grade = grade; c.attempts = attempts; c.semester = semester;
+                        appData.updateParcoursCourse(programId: programId, course: c); dismiss()
+                    }
+                }.buttonStyle(.borderedProminent).disabled(code.isEmpty || name.isEmpty).keyboardShortcut(.defaultAction)
+            }.padding(.top, 10)
         }.padding().frame(width: 400)
     }
 }
