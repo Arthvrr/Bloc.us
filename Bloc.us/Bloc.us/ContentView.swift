@@ -21,7 +21,6 @@ struct CategoryColorManager {
     static var colorMap: [String: Color] = [:]
     static var currentIndex = 0
     
-    // Tableau de 20 couleurs distinctes
     static let palette: [Color] = [
         .blue, .green, .red, .orange, .purple,
         .pink, .teal, .indigo, .mint, .cyan,
@@ -33,17 +32,12 @@ struct CategoryColorManager {
     
     static func color(for category: String) -> Color {
         let normalized = category.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Si la catégorie a déjà une couleur assignée, on la réutilise
         if let existingColor = colorMap[normalized] {
             return existingColor
         }
-        
-        // Sinon on lui assigne la prochaine couleur du tableau de 20
         let newColor = palette[currentIndex % palette.count]
         colorMap[normalized] = newColor
         currentIndex += 1
-        
         return newColor
     }
 }
@@ -88,6 +82,7 @@ extension DateFormatter {
 struct TaskItem: Identifiable, Codable {
     var id = UUID()
     var name: String
+    var description: String? // Ajout de la description optionnelle
     var total: Double
     var done: Double
 }
@@ -134,7 +129,7 @@ struct Course: Codable {
     var category: String?
 }
 
-// MARK: - MODELS PARCOURS (Séparation Programmes / Années)
+// MARK: - MODELS PARCOURS
 struct ParcoursCourse: Identifiable, Codable {
     var id = UUID()
     var code: String
@@ -144,12 +139,12 @@ struct ParcoursCourse: Identifiable, Codable {
     var option: String?
     var grade: Double
     var attempts: Int
-    var semester: String // "Q1" ou "Q2"
+    var semester: String
 }
 
 struct ExamResult: Identifiable, Codable {
     var id = UUID()
-    var sessionName: String // "Janvier", "Juin", "Août"
+    var sessionName: String
     var courseCode: String
     var grade: Double
     var attempt: Int
@@ -157,14 +152,14 @@ struct ExamResult: Identifiable, Codable {
 
 struct DegreeProgram: Identifiable, Codable {
     var id = UUID()
-    var name: String // "BAC 1"
+    var name: String
     var school: String
     var courses: [ParcoursCourse]
 }
 
 struct AcademicYearTimeline: Identifiable, Codable {
     var id = UUID()
-    var yearString: String // "2021-2022"
+    var yearString: String
     var exams: [ExamResult]
 }
 
@@ -197,9 +192,6 @@ class AppData: ObservableObject {
     @Published var degreePrograms: [DegreeProgram] = [] { didSet { save() } }
     @Published var academicYearsTimeline: [AcademicYearTimeline] = [] { didSet { save() } }
     
-    @Published var currentStreak: Int = 0
-    @Published var lastProgressDate: String = ""
-    
     init() {
         load()
         requestNotificationPermission()
@@ -210,8 +202,6 @@ class AppData: ObservableObject {
         if let encodedSchedule = try? JSONEncoder().encode(schedule) { UserDefaults.standard.set(encodedSchedule, forKey: "schedule") }
         if let encodedPrograms = try? JSONEncoder().encode(degreePrograms) { UserDefaults.standard.set(encodedPrograms, forKey: "degreePrograms") }
         if let encodedTimelines = try? JSONEncoder().encode(academicYearsTimeline) { UserDefaults.standard.set(encodedTimelines, forKey: "academicYearsTimeline") }
-        UserDefaults.standard.set(currentStreak, forKey: "currentStreak")
-        UserDefaults.standard.set(lastProgressDate, forKey: "lastProgressDate")
         updateNotifications()
     }
     
@@ -225,12 +215,7 @@ class AppData: ObservableObject {
         if let data = rawSchedule, let decoded = try? JSONDecoder().decode([String: [CourseEvent]].self, from: data) { self.schedule = decoded }
         if let data = rawPrograms, let decoded = try? JSONDecoder().decode([DegreeProgram].self, from: data) { self.degreePrograms = decoded }
         if let data = rawTimelines, let decoded = try? JSONDecoder().decode([AcademicYearTimeline].self, from: data) { self.academicYearsTimeline = decoded }
-        
-        self.currentStreak = UserDefaults.standard.integer(forKey: "currentStreak")
-        self.lastProgressDate = UserDefaults.standard.string(forKey: "lastProgressDate") ?? ""
     }
-    
-    // --- LOGIQUE PARCOURS ---
     
     func allParcoursCourses() -> [ParcoursCourse] {
         var uniqueCourses: [String: ParcoursCourse] = [:]
@@ -322,7 +307,6 @@ class AppData: ObservableObject {
         return (earned, totalAttempted, totalAttempted > 0 ? weightedSum / totalAttempted : 0)
     }
     
-    // CRUD Programmes
     func addParcoursCourse(programId: UUID, course: ParcoursCourse) {
         objectWillChange.send()
         if let index = degreePrograms.firstIndex(where: { $0.id == programId }) {
@@ -343,7 +327,6 @@ class AppData: ObservableObject {
         }
     }
     
-    // CRUD Années (Examens)
     func addExamResult(yearId: UUID, exam: ExamResult) {
         objectWillChange.send()
         if let index = academicYearsTimeline.firstIndex(where: { $0.id == yearId }) {
@@ -355,21 +338,6 @@ class AppData: ObservableObject {
         if let index = academicYearsTimeline.firstIndex(where: { $0.id == yearId }) {
             academicYearsTimeline[index].exams.removeAll(where: { $0.id == examId }); save()
         }
-    }
-    
-    // --- GAMIFICATION ---
-    func registerActivity() {
-        let today = DateFormatter.yyyyMMdd.string(from: Date())
-        if lastProgressDate == today { return }
-        let yesterday = DateFormatter.yyyyMMdd.string(from: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
-        if lastProgressDate == yesterday { currentStreak += 1 } else { currentStreak = 1 }
-        lastProgressDate = today; save()
-    }
-    func getDisplayStreak() -> Int {
-        let today = DateFormatter.yyyyMMdd.string(from: Date())
-        let yesterday = DateFormatter.yyyyMMdd.string(from: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
-        if lastProgressDate == today || lastProgressDate == yesterday { return currentStreak }
-        return 0
     }
     
     // --- NOTIFICATIONS ---
@@ -508,10 +476,6 @@ struct GeneralView: View {
                 HStack {
                     Text("📚 Bloc.us - Ton partenaire de blocus").font(.largeTitle).bold()
                     Spacer()
-                    if appData.getDisplayStreak() > 0 {
-                        HStack(spacing: 4) { Text("🔥"); Text("\(appData.getDisplayStreak()) jours").fontWeight(.bold).foregroundColor(.orange) }
-                        .padding(.horizontal, 12).padding(.vertical, 6).background(Color.orange.opacity(0.2)).cornerRadius(20)
-                    }
                 }
                 
                 VStack(alignment: .leading, spacing: 10) {
@@ -544,7 +508,7 @@ struct GeneralView: View {
                         Text("📝 À faire aujourd'hui").font(.headline).foregroundColor(.orange).padding(.top, 10)
                         ForEach(todaysTodos, id: \.todo.id) { item in
                             HStack {
-                                Button(action: { appData.courses[item.courseName]?.todos?[item.todoIndex].isDone = true; appData.registerActivity() }) { Image(systemName: "circle").font(.title3) }.buttonStyle(.plain).foregroundColor(.orange)
+                                Button(action: { appData.courses[item.courseName]?.todos?[item.todoIndex].isDone = true }) { Image(systemName: "circle").font(.title3) }.buttonStyle(.plain).foregroundColor(.orange)
                                 Text(item.todo.text).font(.body)
                                 Text("(\(item.courseName))").font(.caption).foregroundColor(Color(hex: item.colorHex))
                             }.padding().frame(maxWidth: .infinity, alignment: .leading).background(Color.orange.opacity(0.1)).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.5), lineWidth: 1))
@@ -693,7 +657,6 @@ struct ParcoursMainView: View {
     @ObservedObject var appData: AppData
     @State private var selectedMainTab: String = "Dashboard"
     
-    // Pour la création
     @State private var isShowingAddProgram = false
     @State private var isShowingAddYear = false
     
@@ -742,7 +705,7 @@ struct ParcoursDashboardView: View {
             VStack(alignment: .leading, spacing: 30) {
                 Text("Vue d'ensemble de tes études").font(.title2).bold()
                 if appData.degreePrograms.isEmpty && appData.academicYearsTimeline.isEmpty {
-                    Text("Ajoute un Programme (BAC 1) puis une Année Académique (2021-2022) pour commencer !").foregroundColor(.secondary)
+                    Text("Ajoute un Programme (BAC 1) puis une Année Académique (2021-2022) pour commencer !").foregroundColor(.secondary).padding()
                 } else {
                     let stats = appData.globalParcoursStats()
                     let totalCoursesCount = appData.allParcoursCourses().count
@@ -974,7 +937,7 @@ struct ProgramDetailView: View {
 }
 
 
-// MARK: - ONGLET : ANNÉES ACADÉMIQUES (Sessions d'examens)
+// MARK: - ONGLET : ANNÉES ACADÉMIQUES
 struct YearSelectionView: View {
     @ObservedObject var appData: AppData
     @State private var selectedYearId: String = ""
@@ -1064,7 +1027,6 @@ struct SemesterTableContent: View {
                         Text(String(format: "%.1f", course.credits)).frame(width: 60, alignment: .center)
                         Text(course.category).frame(width: 120, alignment: .leading).foregroundColor(.secondary)
                         Text(String(format: "%.2f", course.grade)).frame(width: 100, alignment: .center).foregroundColor(course.grade >= 10.0 ? .green : .red).bold()
-                        // TENTATIVES CALCULEES DYNAMIQUEMENT
                         Text("\(appData.totalAttemptsFor(courseCode: course.code))").frame(width: 80, alignment: .center)
                         Button(action: { appData.removeParcoursCourse(programId: programId, courseId: course.id) }) { Image(systemName: "trash").foregroundColor(.red) }.buttonStyle(.plain).frame(width: 30)
                     }.padding(.horizontal, 10).padding(.vertical, 8).contentShape(Rectangle()).onTapGesture(count: 2) { courseToEdit = course }; Divider()
@@ -1112,7 +1074,6 @@ struct ExamSessionTableContent: View {
 }
 
 // --- GRAPHIQUES PARCOURS ---
-
 struct ProgramNotesChart: View {
     @ObservedObject var appData: AppData
     let program: DegreeProgram
@@ -1151,7 +1112,6 @@ struct CategoriesChart: View {
                     Text(hoverText).font(.caption).bold().foregroundColor(hoveredAngle == nil ? .secondary : .blue)
                     Chart {
                         ForEach(data, id: \.cat) { item in
-                            // NOUVEAU: Utilisation de categoryColor() pour garantir la même couleur partout !
                             SectorMark(angle: .value("Crédits", item.credits), innerRadius: .ratio(0.5), angularInset: 1.5).foregroundStyle(item.cat.categoryColor())
                         }
                     }.chartAngleSelection(value: $hoveredAngle)
@@ -1225,7 +1185,6 @@ struct YearZoomModalView: View {
 }
 
 // MARK: - FORMULAIRES PARCOURS
-
 struct AddDegreeProgramSheet: View {
     @ObservedObject var appData: AppData
     @Binding var isPresented: Bool
@@ -1259,7 +1218,6 @@ struct AddAcademicYearTimelineSheet: View {
     }
 }
 
-
 struct AddParcoursCourseSheet: View {
     @ObservedObject var appData: AppData
     @Binding var isPresented: Bool
@@ -1269,7 +1227,7 @@ struct AddParcoursCourseSheet: View {
     @State private var name = ""
     @State private var credits: Double = 5.0
     @State private var category = ""
-    @State private var option = "Tronc commun" // 1. LA VARIABLE
+    @State private var option = "Tronc commun"
     @State private var grade: Double = 10.0
     @State private var attempts: Int = 1
     @State private var semester = "Q1"
@@ -1279,20 +1237,16 @@ struct AddParcoursCourseSheet: View {
             Text("Ajouter un cours au programme").font(.headline).frame(maxWidth: .infinity, alignment: .center)
             HStack { TextField("Code (ex: LINFO1101)", text: $code).textFieldStyle(.roundedBorder); Picker("", selection: $semester) { ForEach(["Q1", "Q2"], id: \.self) { Text($0) } }.frame(width: 80) }
             TextField("Nom complet du cours", text: $name).textFieldStyle(.roundedBorder)
-            
-            // 2. LE CHAMP TEXTE
             HStack {
                 TextField("Catégorie (ex: Informatique)", text: $category).textFieldStyle(.roundedBorder)
                 TextField("Option (ex: Tronc commun, IA...)", text: $option).textFieldStyle(.roundedBorder)
             }
-            
             HStack { VStack(alignment: .leading) { Text("Crédits (ECTS)").font(.caption); TextField("", value: $credits, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Note Initiale (/20)").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) } }
             HStack {
                 Button("Annuler") { isPresented = false }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Enregistrer") {
                     if !code.isEmpty && !name.isEmpty {
-                        // 3. LA SAUVEGARDE
                         appData.addParcoursCourse(programId: programId, course: ParcoursCourse(code: code, name: name, credits: credits, category: category, option: option, grade: grade, attempts: attempts, semester: semester))
                         isPresented = false
                     }
@@ -1308,13 +1262,13 @@ struct EditParcoursCourseSheet: View {
     let programId: UUID; let course: ParcoursCourse
     
     @State private var code: String; @State private var name: String; @State private var credits: Double; @State private var category: String;
-    @State private var option: String // 1. LA VARIABLE
+    @State private var option: String
     @State private var grade: Double; @State private var attempts: Int; @State private var semester: String
     
     init(appData: AppData, programId: UUID, course: ParcoursCourse) {
         self.appData = appData; self.programId = programId; self.course = course
         _code = State(initialValue: course.code); _name = State(initialValue: course.name); _credits = State(initialValue: course.credits); _category = State(initialValue: course.category);
-        _option = State(initialValue: course.option ?? "Tronc commun") // 2. L'INITIALISATION
+        _option = State(initialValue: course.option ?? "Tronc commun")
         _grade = State(initialValue: course.grade); _attempts = State(initialValue: course.attempts); _semester = State(initialValue: course.semester)
     }
     
@@ -1323,13 +1277,10 @@ struct EditParcoursCourseSheet: View {
             Text("Modifier Cours").font(.headline).frame(maxWidth: .infinity, alignment: .center)
             HStack { TextField("Code", text: $code).textFieldStyle(.roundedBorder); Picker("", selection: $semester){ Text("Q1").tag("Q1"); Text("Q2").tag("Q2") }.frame(width: 80) }
             TextField("Nom complet", text: $name).textFieldStyle(.roundedBorder)
-            
-            // 3. LE CHAMP TEXTE
             HStack {
                 TextField("Catégorie", text: $category).textFieldStyle(.roundedBorder)
                 TextField("Option", text: $option).textFieldStyle(.roundedBorder)
             }
-            
             HStack { VStack(alignment: .leading) { Text("Crédits").font(.caption); TextField("", value: $credits, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Note Initiale").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) } }
             HStack {
                 Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
@@ -1337,7 +1288,7 @@ struct EditParcoursCourseSheet: View {
                 Button("Sauvegarder") {
                     if !code.isEmpty && !name.isEmpty {
                         var c = course; c.code = code; c.name = name; c.credits = credits; c.category = category;
-                        c.option = option // 4. LA MISE A JOUR
+                        c.option = option
                         c.grade = grade; c.attempts = attempts; c.semester = semester;
                         appData.updateParcoursCourse(programId: programId, course: c); dismiss()
                     }
@@ -1347,7 +1298,6 @@ struct EditParcoursCourseSheet: View {
     }
 }
 
-// LIEN INTER-ANNÉES : Ajout d'examen avec Picker sur TOUS les cours du parcours
 struct AddExamResultSheet: View {
     @ObservedObject var appData: AppData
     @Binding var isPresented: Bool
@@ -1367,8 +1317,7 @@ struct AddExamResultSheet: View {
     }
 }
 
-// MARK: - AUTRES VUES EXISTANTES (Général, Planning, MenuBar, etc...)
-
+// MARK: - COMPOSANTS CONFIGURATION ET CALENDRIER (MODIFIÉS POUR LE DOUBLE CLIC)
 struct AddCourseSheet: View {
     @ObservedObject var appData: AppData
     @Binding var isPresented: Bool
@@ -1384,9 +1333,7 @@ struct AddCourseSheet: View {
 struct CustomProgressBar: View {
     var progress: Double; var color: Color; var isMain: Bool
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            GeometryReader { geometry in ZStack(alignment: .leading) { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.2)).frame(height: isMain ? 24 : 14); RoundedRectangle(cornerRadius: 8).fill(color).frame(width: max(0, min(geometry.size.width * CGFloat(progress), geometry.size.width)), height: isMain ? 24 : 14).animation(.spring(), value: progress) } }.frame(height: isMain ? 24 : 14); Text("\(String(format: "%.2f", progress * 100)) % accompli").font(isMain ? .body : .caption).fontWeight(isMain ? .bold : .regular).foregroundColor(.secondary)
-        }
+        GeometryReader { geometry in ZStack(alignment: .leading) { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.2)).frame(height: isMain ? 24 : 14); RoundedRectangle(cornerRadius: 8).fill(color).frame(width: max(0, min(geometry.size.width * CGFloat(progress), geometry.size.width)), height: isMain ? 24 : 14).animation(.spring(), value: progress) } }.frame(height: isMain ? 24 : 14); Text("\(String(format: "%.2f", progress * 100)) % accompli").font(isMain ? .body : .caption).fontWeight(isMain ? .bold : .regular).foregroundColor(.secondary)
     }
 }
 
@@ -1398,12 +1345,32 @@ struct PlanningView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack { Text("Programme d'étude").font(.largeTitle).bold(); Spacer(); Button("🗑️ Vider TOUT le calendrier") { appData.schedule.removeAll() }.buttonStyle(.bordered) }
-                GroupBox("➕ Planifier une session") { HStack(alignment: .bottom) { VStack(alignment: .leading) { Text("Date"); DatePicker("", selection: $selectedDate, displayedComponents: .date).labelsHidden() }; VStack(alignment: .leading) { Text("Type"); Picker("", selection: $selectedType) { ForEach(types, id: \.self) { Text($0) } }.labelsHidden() }; VStack(alignment: .leading) { Text("Cours"); Picker("", selection: $selectedCourse) { Text("Sélectionner").tag(""); ForEach(appData.courses.keys.sorted(), id: \.self) { Text($0).tag($0) } }.labelsHidden() }; VStack(alignment: .leading) { Text("Description (Optionnel)"); TextField("Ex: Chapitre 5", text: $eventDesc) }; Button("Ajouter") { if !selectedCourse.isEmpty { appData.addScheduleEvent(date: selectedDate, type: selectedType, course: selectedCourse, description: eventDesc); eventDesc = "" } }.buttonStyle(.borderedProminent).disabled(selectedCourse.isEmpty) }.padding(5) }
+                GroupBox("➕ Planifier une session") { AppKitHStackWrapper(selectedDate: $selectedDate, selectedType: $selectedType, selectedCourse: $selectedCourse, eventDesc: $eventDesc, appData: appData, types: types) }
                 Divider()
                 let today = Date(); let calendar = Calendar.current; let currentMonth = calendar.component(.month, from: today); let currentYear = calendar.component(.year, from: today); let nextMonthDate = calendar.date(byAdding: .month, value: 1, to: today)!; let nextMonth = calendar.component(.month, from: nextMonthDate); let nextYear = calendar.component(.year, from: nextMonthDate)
                 MonthCalendarView(appData: appData, year: currentYear, month: currentMonth); MonthCalendarView(appData: appData, year: nextYear, month: nextMonth)
             }.padding()
         }
+    }
+}
+
+// Séparation Helper View pour éviter l'explosion de complexité d'expression
+struct AppKitHStackWrapper: View {
+    @Binding var selectedDate: Date
+    @Binding var selectedType: String
+    @Binding var selectedCourse: String
+    @Binding var eventDesc: String
+    @ObservedObject var appData: AppData
+    let types: [String]
+    
+    var body: some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading) { Text("Date"); DatePicker("", selection: $selectedDate, displayedComponents: .date).labelsHidden() }
+            VStack(alignment: .leading) { Text("Type"); Picker("", selection: $selectedType) { ForEach(types, id: \.self) { Text($0) } }.labelsHidden() }
+            VStack(alignment: .leading) { Text("Cours"); Picker("", selection: $selectedCourse) { Text("Sélectionner").tag(""); ForEach(appData.courses.keys.sorted(), id: \.self) { Text($0).tag($0) } }.labelsHidden() }
+            VStack(alignment: .leading) { Text("Description (Optionnel)"); TextField("Ex: Chapitre 5", text: $eventDesc) }
+            Button("Ajouter") { if !selectedCourse.isEmpty { appData.addScheduleEvent(date: selectedDate, type: selectedType, course: selectedCourse, description: eventDesc); eventDesc = "" } }.buttonStyle(.borderedProminent).disabled(selectedCourse.isEmpty)
+        }.padding(5)
     }
 }
 
@@ -1432,17 +1399,117 @@ struct CalendarCell: View {
         let isToday = dateStr == DateFormatter.yyyyMMdd.string(from: Date())
         VStack(alignment: .trailing, spacing: 2) {
             Text("\(dayNum)").bold().foregroundColor(isToday ? .white : .primary).padding(6).background(isToday ? Color.red : Color.clear).clipShape(Circle()).padding([.top, .trailing], 5)
-            if let events = appData.schedule[dateStr] { ForEach(events) { ev in let colorHex = appData.courses[ev.course]?.colorHex ?? "#4CAF50"; let isExam = ev.type == "Examen"; HStack { Text(isExam ? "🚨 EXAM: \(ev.course)" : "📚 \(ev.course)").font(.system(size: 10, weight: isExam ? .heavy : .medium)).foregroundColor(.primary).lineLimit(1); Spacer(); Button(action: { appData.removeScheduleEvent(dateStr: dateStr, eventId: ev.id) }) { Image(systemName: "trash").font(.system(size: 9)) }.buttonStyle(.plain) }.padding(4).background(Color(hex: colorHex).opacity(0.3)).overlay(Rectangle().frame(width: 4).foregroundColor(Color(hex: colorHex)), alignment: .leading).cornerRadius(4).padding(.horizontal, 2) } }
+            if let events = appData.schedule[dateStr] {
+                ForEach(events) { ev in
+                    EventRowView(appData: appData, ev: ev, dateStr: dateStr)
+                }
+            }
             Spacer()
         }.frame(maxWidth: .infinity, minHeight: 120, alignment: .topTrailing).background(Color(NSColor.controlBackgroundColor)).cornerRadius(6).overlay(RoundedRectangle(cornerRadius: 6).stroke(isToday ? Color.red.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: isToday ? 2 : 1))
     }
 }
 
+// NOUVEAU SOUS-COMPOSANT POUR EMPECHER LA SÉLECTION CLASSIQUE ET GÉRER LE DOUBLE-CLIC + ÉDITION
+struct EventRowView: View {
+    @ObservedObject var appData: AppData
+    let ev: CourseEvent
+    let dateStr: String
+    
+    @State private var showPopover = false
+    @State private var isEditing = false
+    @State private var editDesc = ""
+    @State private var editType = ""
+
+    var body: some View {
+        let colorHex = appData.courses[ev.course]?.colorHex ?? "#4CAF50"
+        let isExam = ev.type == "Examen"
+        
+        HStack {
+            Text(isExam ? "🚨 EXAM: \(ev.course)" : "📚 \(ev.course)")
+                .font(.system(size: 10, weight: isExam ? .heavy : .medium))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+            Spacer()
+            Button(action: { appData.removeScheduleEvent(dateStr: dateStr, eventId: ev.id) }) {
+                Image(systemName: "trash").font(.system(size: 9))
+            }.buttonStyle(.plain)
+        }
+        .padding(4)
+        .background(Color(hex: colorHex).opacity(0.3))
+        .overlay(Rectangle().frame(width: 4).foregroundColor(Color(hex: colorHex)), alignment: .leading)
+        .cornerRadius(4)
+        .padding(.horizontal, 2)
+        .onTapGesture(count: 2) {
+            editDesc = ev.description
+            editType = ev.type
+            isEditing = false
+            showPopover = true
+        }
+        .popover(isPresented: $showPopover) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Détails du planning").font(.headline)
+                    Spacer()
+                    Button(action: { isEditing.toggle() }) {
+                        Image(systemName: "pencil").foregroundColor(isEditing ? .blue : .primary)
+                    }.buttonStyle(.plain)
+                }
+                Divider()
+                
+                if isEditing {
+                    Picker("Type", selection: $editType) {
+                        Text("Étude").tag("Étude")
+                        Text("Examen").tag("Examen")
+                    }.pickerStyle(.segmented)
+                    TextField("Description", text: $editDesc).textFieldStyle(.roundedBorder)
+                    
+                    Button("Sauvegarder") {
+                        if var events = appData.schedule[dateStr], let idx = events.firstIndex(where: { $0.id == ev.id }) {
+                            events[idx].description = editDesc
+                            events[idx].type = editType
+                            appData.schedule[dateStr] = events
+                            appData.save()
+                        }
+                        showPopover = false
+                    }.buttonStyle(.borderedProminent).frame(maxWidth: .infinity)
+                } else {
+                    Text("**Cours :** \(ev.course)")
+                    Text("**Type :** \(ev.type)")
+                    if !ev.description.isEmpty {
+                        Text("**Description :** \(ev.description)")
+                    } else {
+                        Text("Aucune description.").foregroundColor(.secondary).italic()
+                    }
+                }
+            }.padding().frame(width: 250)
+        }
+    }
+}
+
+// MARK: - DETAIL DU COURS (MODIFIÉ AVEC OPACITÉ COMPLÉTION, ÉDITION TÂCHES ET SANS STREAK)
 struct CourseDetailView: View {
     @ObservedObject var appData: AppData
     let courseName: String
     @Binding var selection: String?
-    @State private var newTaskName = ""; @State private var newTaskTotal: Double = 1.0; @State private var newGradeName = ""; @State private var newGradeTotal: Double = 20.0; @State private var newGradeScore: Double = 0.0; @State private var editedAcronym = ""; @State private var newTodoText = ""; @State private var newTodoHasDate = false; @State private var newTodoDate = Date(); @State private var newLinkName = ""; @State private var newLinkUrl = ""
+    
+    @State private var newTaskName = ""
+    @State private var newTaskTotal: Double = 1.0
+    @State private var newGradeName = ""
+    @State private var newGradeTotal: Double = 20.0
+    @State private var newGradeScore: Double = 0.0
+    @State private var editedAcronym = ""
+    @State private var newTodoText = ""
+    @State private var newTodoHasDate = false
+    @State private var newTodoDate = Date()
+    @State private var newLinkName = ""
+    @State private var newLinkUrl = ""
+    
+    // États pour l'édition de tâche
+    @State private var editingTaskIndex: Int? = nil
+    @State private var editTaskName = ""
+    @State private var editTaskDesc = ""
+    @State private var editTaskTotal: Double = 1.0
+    
     var body: some View {
         if let course = appData.courses[courseName] {
             ScrollView {
@@ -1452,15 +1519,73 @@ struct CourseDetailView: View {
                     DisclosureGroup("⚙️ Paramètres du cours") { VStack(alignment: .leading, spacing: 15) { HStack(alignment: .bottom) { VStack(alignment: .leading) { Text("Acronyme (Nom du cours)"); TextField("Ex: LINFO", text: $editedAcronym).textFieldStyle(.roundedBorder) }; if editedAcronym != courseName && !editedAcronym.isEmpty { Button("Renommer") { appData.renameCourse(oldName: courseName, newName: editedAcronym); selection = editedAcronym }.buttonStyle(.borderedProminent) } }; HStack { VStack(alignment: .leading) { Text("Nom complet"); TextField("Ex: Algorithmique", text: binding(for: \.fullName)) }; VStack(alignment: .leading) { Text("Professeur"); TextField("Ex: John Doe", text: binding(for: \.professor)) } }; HStack { VStack(alignment: .leading) { Text("Catégorie (Section)"); TextField("Ex: Tronc commun", text: Binding(get: { course.category ?? "Général" }, set: { appData.courses[courseName]?.category = $0.isEmpty ? nil : $0 })) }; VStack(alignment: .leading) { Text("Couleur"); ColorPicker("", selection: Binding(get: { Color(hex: course.colorHex) }, set: { appData.courses[courseName]?.colorHex = $0.toHex() })).labelsHidden() }; VStack(alignment: .leading) { Text("Cote cible (/20)"); TextField("", value: binding(for: \.passingGrade), format: .number).frame(width: 60) } }; Text("Informations sur l'examen").bold(); HStack { VStack(alignment: .leading) { Text("Début (HH:MM)"); TextField("", text: binding(for: \.examStartTime)).frame(width: 80) }; VStack(alignment: .leading) { Text("Fin (HH:MM)"); TextField("", text: binding(for: \.examEndTime)).frame(width: 80) }; VStack(alignment: .leading) { Text("Lieu"); TextField("", text: binding(for: \.examLocation)) } } }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(8) }.onAppear { editedAcronym = courseName }.onChange(of: courseName) { newValue in editedAcronym = newValue }
                     DisclosureGroup("🔗 Liens Rapides") { VStack(alignment: .leading) { HStack { TextField("Nom (ex: Dossier Drive)", text: $newLinkName).textFieldStyle(.roundedBorder); TextField("Lien URL", text: $newLinkUrl).textFieldStyle(.roundedBorder); Button("Ajouter") { if !newLinkName.isEmpty && !newLinkUrl.isEmpty { var safeUrl = newLinkUrl; if !safeUrl.lowercased().hasPrefix("http") { safeUrl = "https://" + safeUrl }; var currentLinks = appData.courses[courseName]?.links ?? []; currentLinks.append(LinkItem(name: newLinkName, url: safeUrl)); appData.courses[courseName]?.links = currentLinks; newLinkName = ""; newLinkUrl = "" } }.buttonStyle(.borderedProminent) }; let links = course.links ?? []; if links.isEmpty { Text("Aucun lien ajouté.").foregroundColor(.secondary).padding(.top, 5) } else { LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) { ForEach(Array(links.enumerated()), id: \.element.id) { index, link in HStack { Image(systemName: "link").foregroundColor(.blue); if let url = URL(string: link.url) { Link(link.name, destination: url).foregroundColor(.blue).lineLimit(1) } else { Text(link.name) }; Spacer(); Button("❌") { appData.courses[courseName]?.links?.remove(at: index) }.foregroundColor(.red).buttonStyle(.plain) }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(8).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1)) } }.padding(.top, 10) } } }
                     Divider()
-                    Text("Tâches").font(.title2).bold(); HStack { TextField("Nom (ex: Chapitre 1)", text: $newTaskName); Text("Total :"); TextField("", value: $newTaskTotal, format: .number).frame(width: 50); Button("Ajouter") { if !newTaskName.isEmpty { appData.courses[courseName]?.tasks.append(TaskItem(name: newTaskName, total: newTaskTotal, done: 0)); newTaskName = "" } }.buttonStyle(.borderedProminent) }
-                    ForEach(Array(course.tasks.enumerated()), id: \.element.id) { index, task in VStack(alignment: .leading) { Text(task.name).font(.headline); CustomProgressBar(progress: task.total > 0 ? task.done / task.total : 0, color: Color(hex: course.colorHex), isMain: false); HStack { Text("\(String(format: "%.2f", task.done)) / \(String(format: "%.2f", task.total))"); Spacer(); Button("➖") { if task.done > 0 { appData.courses[courseName]?.tasks[index].done -= 1 } }; Button("➕") { if task.done < task.total { appData.courses[courseName]?.tasks[index].done += 1; appData.registerActivity() } }; Button("❌") { appData.courses[courseName]?.tasks.remove(at: index) }.foregroundColor(.red) } }.padding(.bottom, 10) }
+                    Text("Tâches").font(.title2).bold(); HStack { TextField("Nom (ex: Chapitre 1)", text: $newTaskName); Text("Total :"); TextField("", value: $newTaskTotal, format: .number).frame(width: 50); Button("Ajouter") { if !newTaskName.isEmpty { appData.courses[courseName]?.tasks.append(TaskItem(name: newTaskName, description: nil, total: newTaskTotal, done: 0)); newTaskName = "" } }.buttonStyle(.borderedProminent) }
+                    
+                    ForEach(Array(course.tasks.enumerated()), id: \.element.id) { index, task in
+                        let isCompleted = task.total > 0 && task.done >= task.total
+                        VStack(alignment: .leading) {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(task.name).font(.headline).strikethrough(isCompleted)
+                                    if let desc = task.description, !desc.isEmpty {
+                                        Text(desc).font(.caption).foregroundColor(.secondary).strikethrough(isCompleted)
+                                    }
+                                }
+                                Spacer()
+                                Button(action: {
+                                    editTaskName = task.name
+                                    editTaskDesc = task.description ?? ""
+                                    editTaskTotal = task.total
+                                    editingTaskIndex = index
+                                }) {
+                                    Image(systemName: "pencil").foregroundColor(.blue)
+                                }.buttonStyle(.plain)
+                            }
+                            CustomProgressBar(progress: task.total > 0 ? task.done / task.total : 0, color: Color(hex: course.colorHex), isMain: false)
+                            HStack {
+                                Text("\(String(format: "%.2f", task.done)) / \(String(format: "%.2f", task.total))")
+                                Spacer()
+                                Button("➖") { if task.done > 0 { appData.courses[courseName]?.tasks[index].done -= 1 } }
+                                Button("➕") { if task.done < task.total { appData.courses[courseName]?.tasks[index].done += 1 } }
+                                Button("❌") { appData.courses[courseName]?.tasks.remove(at: index) }.foregroundColor(.red)
+                            }
+                        }
+                        .opacity(isCompleted ? 0.5 : 1.0)
+                        .padding(.bottom, 10)
+                    }
+                    
                     Divider(); Text("🗓️ Planification").font(.title2).bold(); let stats = appData.computeStudyDays(for: courseName); Text("⏱️ Total prévu : \(stats.total) jour(s)  |  ⏳ Reste à faire : \(stats.remaining) jour(s)"); let plannedDates = getPlannedDates(for: courseName); if plannedDates.isEmpty { Text("- Aucun jour planifié dans le calendrier pour l'instant.") } else { ForEach(plannedDates, id: \.dateStr) { item in Text(item.isExam ? "- 🚨 **\(item.formatted)** (Examen)\(item.desc)" : "- 📚 \(item.formatted)\(item.desc)") } }
                     Divider(); Text("🎓 Cotation").font(.title2).bold(); HStack { TextField("Nom (ex: TP1)", text: $newGradeName); Text("Score :"); TextField("", value: $newGradeScore, format: .number).frame(width: 50); Text("Sur :"); TextField("", value: $newGradeTotal, format: .number).frame(width: 50); Button("Ajouter") { if !newGradeName.isEmpty { appData.courses[courseName]?.grading.append(GradingItem(name: newGradeName, total: newGradeTotal, score: newGradeScore)); newGradeName = "" } }.buttonStyle(.borderedProminent) }
                     ForEach(Array(course.grading.enumerated()), id: \.element.id) { index, grade in HStack { Text("**\(grade.name)**").frame(width: 150, alignment: .leading); TextField("Score", value: Binding(get: { grade.score }, set: { appData.courses[courseName]?.grading[index].score = $0 }), format: .number).textFieldStyle(.roundedBorder).frame(width: 60); Text("/ \(String(format: "%.2f", grade.total)) pts").frame(width: 80, alignment: .leading); Text("\(String(format: "%.2f", (grade.total > 0 ? (grade.score / grade.total) : 0) * 100)) %").frame(width: 80, alignment: .trailing); Spacer(); Button("❌") { appData.courses[courseName]?.grading.remove(at: index) }.foregroundColor(.red) }.padding(.vertical, 4) }
                     Divider(); let (examTotal, needed) = computeExamTarget(grading: course.grading, target: course.passingGrade); Text("🧪 Examen (Cible: \(String(format: "%.2f", course.passingGrade))/20)").font(.title2).bold(); Text("Examen sur **\(String(format: "%.2f", examTotal)) points**"); if examTotal > 0 { let percentage = (needed / examTotal) * 100; Text("🎯 Tu dois avoir **\(String(format: "%.2f", needed)) / \(String(format: "%.2f", examTotal))** pour atteindre ton objectif (\(String(format: "%.1f", percentage))%)") } else { Text("🎉 Objectif déjà atteint ou dépassé avec la cotation continue !").foregroundColor(.green).bold() }
                     Divider(); Text("📝 À faire (TODO)").font(.title2).bold(); HStack { TextField("Nouvelle tâche (ex: Imprimer syllabus)...", text: $newTodoText).textFieldStyle(.roundedBorder); Toggle("Avec date", isOn: $newTodoHasDate); if newTodoHasDate { DatePicker("", selection: $newTodoDate).labelsHidden() }; Button("Ajouter") { if !newTodoText.isEmpty { var currentTodos = appData.courses[courseName]?.todos ?? []; currentTodos.append(TodoItem(text: newTodoText, dueDate: newTodoHasDate ? newTodoDate : nil)); appData.courses[courseName]?.todos = currentTodos; newTodoText = ""; newTodoHasDate = false } }.buttonStyle(.borderedProminent) }
-                    let todos = course.todos ?? []; if todos.isEmpty { Text("Aucune tâche en attente.").foregroundColor(.secondary).padding(.vertical, 5) } else { ForEach(Array(todos.enumerated()), id: \.element.id) { index, todo in HStack { Button(action: { appData.courses[courseName]?.todos?[index].isDone.toggle(); if appData.courses[courseName]?.todos?[index].isDone == true { appData.registerActivity() } }) { Image(systemName: todo.isDone ? "checkmark.circle.fill" : "circle").foregroundColor(todo.isDone ? .green : .gray).font(.title3) }.buttonStyle(.plain); TextField("Tâche", text: Binding(get: { todo.text }, set: { appData.courses[courseName]?.todos?[index].text = $0 })).strikethrough(todo.isDone).foregroundColor(todo.isDone ? .secondary : .primary); if todo.dueDate != nil { DatePicker("", selection: Binding(get: { todo.dueDate ?? Date() }, set: { appData.courses[courseName]?.todos?[index].dueDate = $0 })).labelsHidden() } else { Button(action: { appData.courses[courseName]?.todos?[index].dueDate = Date() }) { Image(systemName: "calendar.badge.plus").foregroundColor(.blue) }.buttonStyle(.plain).help("Ajouter une date") }; Spacer(); Button("❌") { appData.courses[courseName]?.todos?.remove(at: index) }.foregroundColor(.red) }.padding(.vertical, 6).padding(.horizontal, 10).background(Color(NSColor.controlBackgroundColor)).cornerRadius(6) } }
+                    let todos = course.todos ?? []; if todos.isEmpty { Text("Aucune tâche en attente.").foregroundColor(.secondary).padding(.vertical, 5) } else { ForEach(Array(todos.enumerated()), id: \.element.id) { index, todo in HStack { Button(action: { appData.courses[courseName]?.todos?[index].isDone.toggle() }) { Image(systemName: todo.isDone ? "checkmark.circle.fill" : "circle").foregroundColor(todo.isDone ? .green : .gray).font(.title3) }.buttonStyle(.plain); TextField("Tâche", text: Binding(get: { todo.text }, set: { appData.courses[courseName]?.todos?[index].text = $0 })).strikethrough(todo.isDone).foregroundColor(todo.isDone ? .secondary : .primary); if todo.dueDate != nil { DatePicker("", selection: Binding(get: { todo.dueDate ?? Date() }, set: { appData.courses[courseName]?.todos?[index].dueDate = $0 })).labelsHidden() } else { Button(action: { appData.courses[courseName]?.todos?[index].dueDate = Date() }) { Image(systemName: "calendar.badge.plus").foregroundColor(.blue) }.buttonStyle(.plain).help("Ajouter une date") }; Spacer(); Button("❌") { appData.courses[courseName]?.todos?.remove(at: index) }.foregroundColor(.red) }.padding(.vertical, 6).padding(.horizontal, 10).background(Color(NSColor.controlBackgroundColor)).cornerRadius(6) } }
                 }.padding()
+            }
+            .sheet(isPresented: Binding(get: { editingTaskIndex != nil }, set: { if !$0 { editingTaskIndex = nil } })) {
+                if let idx = editingTaskIndex {
+                    VStack(spacing: 20) {
+                        Text("Modifier la tâche").font(.headline)
+                        TextField("Nom de la tâche", text: $editTaskName).textFieldStyle(.roundedBorder)
+                        TextField("Description (Optionnelle)", text: $editTaskDesc).textFieldStyle(.roundedBorder)
+                        HStack { Text("Total :"); TextField("", value: $editTaskTotal, format: .number).textFieldStyle(.roundedBorder).frame(width: 80) }
+                        HStack {
+                            Button("Annuler") { editingTaskIndex = nil }.keyboardShortcut(.cancelAction)
+                            Spacer()
+                            Button("Sauvegarder") {
+                                if !editTaskName.isEmpty {
+                                    appData.courses[courseName]?.tasks[idx].name = editTaskName
+                                    appData.courses[courseName]?.tasks[idx].description = editTaskDesc.isEmpty ? nil : editTaskDesc
+                                    appData.courses[courseName]?.tasks[idx].total = editTaskTotal
+                                    if let done = appData.courses[courseName]?.tasks[idx].done, done > editTaskTotal {
+                                        appData.courses[courseName]?.tasks[idx].done = editTaskTotal
+                                    }
+                                    editingTaskIndex = nil
+                                }
+                            }.buttonStyle(.borderedProminent).disabled(editTaskName.isEmpty).keyboardShortcut(.defaultAction)
+                        }
+                    }.padding().frame(width: 300)
+                }
             }
         }
     }
@@ -1469,15 +1594,16 @@ struct CourseDetailView: View {
     func computeExamTarget(grading: [GradingItem], target: Double) -> (Double, Double) { let totalPoints = grading.reduce(0) { $0 + $1.total }; let earnedPoints = grading.reduce(0) { $0 + $1.score }; let examTotal = max(0, 20 - totalPoints); let neededExam = target - earnedPoints; return (examTotal, max(0, neededExam)) }
 }
 
+// MARK: - MENU BAR VIEW (SANS STREAK)
 struct MenuBarView: View {
     @ObservedObject var appData: AppData
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 15) {
-                HStack { Text("🎯 Focus du jour").font(.headline); Spacer(); if appData.getDisplayStreak() > 0 { Text("🔥 \(appData.getDisplayStreak())j").font(.caption).fontWeight(.bold).foregroundColor(.orange).padding(.horizontal, 8).padding(.vertical, 2).background(Color.orange.opacity(0.2)).cornerRadius(10) } }.padding(.bottom, 5)
+                HStack { Text("🎯 Focus du jour").font(.headline); Spacer() }.padding(.bottom, 5)
                 let todayStr = DateFormatter.yyyyMMdd.string(from: Date()); let todaysEvents = appData.schedule[todayStr] ?? []
                 if todaysEvents.isEmpty { Text("Rien de prévu aujourd'hui ! Profite de ton repos.").font(.subheadline).foregroundColor(.secondary) } else { ForEach(todaysEvents) { ev in if let course = appData.courses[ev.course] { VStack(alignment: .leading, spacing: 8) { HStack { Text("📚 **\(ev.course)**"); Spacer(); if let dayInfo = appData.currentStudyDayInfo(for: ev.course) { Text("Jour \(dayInfo.current)/\(dayInfo.total)").font(.caption).fontWeight(.bold).padding(.horizontal, 6).padding(.vertical, 2).background(Color(hex: course.colorHex).opacity(0.2)).foregroundColor(Color(hex: course.colorHex)).cornerRadius(4) } }; if !ev.description.isEmpty { Text("👉 \(ev.description)").font(.caption).foregroundColor(.secondary) }; CustomProgressBar(progress: appData.computeProgress(for: ev.course), color: Color(hex: course.colorHex), isMain: false); let totalPoints = course.grading.reduce(0) { $0 + $1.total }; let earnedPoints = course.grading.reduce(0) { $0 + $1.score }; let examTotal = max(0, 20 - totalPoints); let neededExam = max(0, course.passingGrade - earnedPoints); if examTotal > 0 { let percentage = (neededExam / examTotal) * 100; Text("Objectif examen : **\(String(format: "%.2f", neededExam)) / \(String(format: "%.2f", examTotal))** (\(String(format: "%.1f", percentage))%)").font(.caption2).foregroundColor(.secondary) } else { Text("🎉 Cours déjà validé !").font(.caption2).foregroundColor(.green) } }.padding(10).background(Color(NSColor.controlBackgroundColor)).cornerRadius(8) } } }
-                let todaysTodos = appData.getTodaysTodos(); if !todaysTodos.isEmpty { Divider(); Text("📝 À faire aujourd'hui").font(.headline).foregroundColor(.orange); ForEach(todaysTodos, id: \.todo.id) { item in HStack { Button(action: { appData.courses[item.courseName]?.todos?[item.todoIndex].isDone = true; appData.registerActivity() }) { Image(systemName: "circle") }.buttonStyle(.plain); VStack(alignment: .leading) { Text(item.todo.text).font(.subheadline); Text(item.courseName).font(.caption2).foregroundColor(Color(hex: item.colorHex)) } } } }
+                let todaysTodos = appData.getTodaysTodos(); if !todaysTodos.isEmpty { Divider(); Text("📝 À faire aujourd'hui").font(.headline).foregroundColor(.orange); ForEach(todaysTodos, id: \.todo.id) { item in HStack { Button(action: { appData.courses[item.courseName]?.todos?[item.todoIndex].isDone = true }) { Image(systemName: "circle") }.buttonStyle(.plain); VStack(alignment: .leading) { Text(item.todo.text).font(.subheadline); Text(item.courseName).font(.caption2).foregroundColor(Color(hex: item.colorHex)) } } } }
                 Divider(); Text("📚 Progression par section").font(.headline).padding(.top, 5)
                 let grouped = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })
                 ForEach(grouped.keys.sorted(), id: \.self) { cat in Text(cat).font(.caption).foregroundColor(.secondary).padding(.top, 5); ForEach(grouped[cat]!.sorted(), id: \.self) { cName in let course = appData.courses[cName]!; HStack { Text(cName).font(.subheadline); Spacer(); Text("\(String(format: "%.2f", appData.computeProgress(for: cName) * 100)) %").font(.caption2) }; CustomProgressBar(progress: appData.computeProgress(for: cName), color: Color(hex: course.colorHex), isMain: false) } }
