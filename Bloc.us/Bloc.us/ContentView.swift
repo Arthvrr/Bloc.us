@@ -82,7 +82,7 @@ extension DateFormatter {
 struct TaskItem: Identifiable, Codable {
     var id = UUID()
     var name: String
-    var description: String? // Ajout de la description optionnelle
+    var description: String?
     var total: Double
     var done: Double
 }
@@ -180,7 +180,7 @@ enum GeneralZoomType: String, Identifiable {
 }
 
 enum DashboardZoomType: String, Identifiable {
-    case chartEvolution, chartGlobalCat, chartHistogram, chartSessions
+    case chartEvolution, chartGlobalCat, chartHistogram, chartSessions, chartCreditsYear, chartGradeCategory
     var id: String { self.rawValue }
 }
 
@@ -337,6 +337,14 @@ class AppData: ObservableObject {
         objectWillChange.send()
         if let index = academicYearsTimeline.firstIndex(where: { $0.id == yearId }) {
             academicYearsTimeline[index].exams.removeAll(where: { $0.id == examId }); save()
+        }
+    }
+    func updateExamResult(yearId: UUID, exam: ExamResult) {
+        objectWillChange.send()
+        if let yIndex = academicYearsTimeline.firstIndex(where: { $0.id == yearId }),
+           let eIndex = academicYearsTimeline[yIndex].exams.firstIndex(where: { $0.id == exam.id }) {
+            academicYearsTimeline[yIndex].exams[eIndex] = exam
+            save()
         }
     }
     
@@ -733,6 +741,19 @@ struct ParcoursDashboardView: View {
                         }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
                     }
                     
+                    // NOUVEAUX GRAPHIQUES DASHBOARD
+                    HStack(alignment: .top, spacing: 20) {
+                        VStack(alignment: .leading) {
+                            HStack { Text("Crédits par Année").font(.headline); Spacer(); Button(action: { zoomedItem = .chartCreditsYear }) { Image(systemName: "plus.magnifyingglass") } }
+                            CreditsPerYearChart(appData: appData).frame(height: 250)
+                        }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                        
+                        VStack(alignment: .leading) {
+                            HStack { Text("Moyenne par Catégorie").font(.headline); Spacer(); Button(action: { zoomedItem = .chartGradeCategory }) { Image(systemName: "plus.magnifyingglass") } }
+                            GradeByCategoryChart(appData: appData).frame(height: 250)
+                        }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                    }
+                    
                     VStack(alignment: .leading) {
                         HStack { Text("Taux de réussite par Session").font(.headline); Spacer(); Button(action: { zoomedItem = .chartSessions }) { Image(systemName: "plus.magnifyingglass") } }
                         GlobalSessionSuccessChart(appData: appData).frame(height: 250)
@@ -854,6 +875,69 @@ struct DashboardEvolutionChart: View {
     }
 }
 
+struct CreditsPerYearChart: View {
+    @ObservedObject var appData: AppData
+    @State private var hoveredYear: String?
+
+    var body: some View {
+        VStack {
+            if let h = hoveredYear, let yId = appData.academicYearsTimeline.first(where: { $0.yearString == h })?.id {
+                let stats = appData.yearStats(yearId: yId)
+                Text("\(h) : \(String(format: "%.1f", stats.earned)) validés / \(String(format: "%.1f", stats.totalAttempted)) tentés").font(.caption).bold().foregroundColor(.blue)
+            } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
+
+            Chart {
+                ForEach(appData.academicYearsTimeline) { year in
+                    let stats = appData.yearStats(yearId: year.id)
+                    BarMark(x: .value("Année", year.yearString), y: .value("Crédits Validés", stats.earned))
+                        .foregroundStyle(Color.green)
+                        .opacity(hoveredYear == nil || hoveredYear == year.yearString ? 1.0 : 0.4)
+                    BarMark(x: .value("Année", year.yearString), y: .value("Échecs (Crédits)", stats.totalAttempted - stats.earned))
+                        .foregroundStyle(Color.red.opacity(0.7))
+                        .opacity(hoveredYear == nil || hoveredYear == year.yearString ? 1.0 : 0.4)
+                }
+            }.chartXSelection(value: $hoveredYear)
+        }
+    }
+}
+
+struct GradeByCategoryChart: View {
+    @ObservedObject var appData: AppData
+    @State private var hoveredCat: String?
+
+    var body: some View {
+        let allCourses = appData.allParcoursCourses()
+        let grouped = Dictionary(grouping: allCourses, by: { $0.category })
+        let averages = grouped.keys.map { cat -> (String, Double) in
+            let coursesInCat = grouped[cat]!
+            var sum = 0.0; var count = 0.0
+            for c in coursesInCat {
+                let bestG = appData.bestGradeFor(courseCode: c.code)
+                if bestG > 0 { sum += bestG; count += 1 }
+            }
+            return (cat, count > 0 ? sum / count : 0.0)
+        }.filter { $0.1 > 0 }.sorted(by: { $0.1 > $1.1 })
+
+        return VStack {
+            if averages.isEmpty {
+                Text("Aucune donnée disponible.").foregroundColor(.secondary)
+            } else {
+                if let h = hoveredCat, let avg = averages.first(where: { $0.0 == h })?.1 {
+                    Text("\(h) : \(String(format: "%.2f", avg)) / 20 en moyenne").font(.caption).bold().foregroundColor(.blue)
+                } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
+
+                Chart {
+                    ForEach(averages, id: \.0) { item in
+                        BarMark(x: .value("Catégorie", item.0), y: .value("Moyenne", item.1))
+                            .foregroundStyle(item.0.categoryColor())
+                            .opacity(hoveredCat == nil || hoveredCat == item.0 ? 1.0 : 0.4)
+                    }
+                }.chartXSelection(value: $hoveredCat).chartYScale(domain: 0...20)
+            }
+        }
+    }
+}
+
 struct DashboardZoomModalView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var appData: AppData
@@ -866,6 +950,8 @@ struct DashboardZoomModalView: View {
             case .chartGlobalCat: Text("Répartition Globale des Crédits").font(.title).bold(); GlobalCategoriesChart(appData: appData).padding()
             case .chartHistogram: Text("Histogramme des Notes").font(.title).bold(); GlobalGradeHistogram(appData: appData).padding()
             case .chartSessions: Text("Taux de réussite par Session").font(.title).bold(); GlobalSessionSuccessChart(appData: appData).padding()
+            case .chartCreditsYear: Text("Crédits par Année").font(.title).bold(); CreditsPerYearChart(appData: appData).padding()
+            case .chartGradeCategory: Text("Moyenne par Catégorie").font(.title).bold(); GradeByCategoryChart(appData: appData).padding()
             }
             Spacer()
         }.padding().frame(minWidth: 800, minHeight: 600)
@@ -1053,7 +1139,11 @@ struct ExamSessionSection: View {
 
 struct ExamSessionTableContent: View {
     @ObservedObject var appData: AppData
-    let yearId: UUID; let exams: [ExamResult]
+    let yearId: UUID
+    let exams: [ExamResult]
+    
+    @State private var examToEdit: ExamResult?
+    
     var body: some View {
         VStack(spacing: 0) {
             HStack { Text("Code").bold().frame(width: 100, alignment: .leading); Text("Nom du Cours").bold().frame(maxWidth: .infinity, alignment: .leading); Text("Note /20").bold().frame(width: 100, alignment: .center); Text("Tentative").bold().frame(width: 100, alignment: .center); Text("").frame(width: 30) }.padding(.horizontal, 10).padding(.vertical, 8).background(Color.orange.opacity(0.1))
@@ -1066,10 +1156,21 @@ struct ExamSessionTableContent: View {
                         Text(String(format: "%.2f", exam.grade)).frame(width: 100, alignment: .center).foregroundColor(exam.grade >= 10.0 ? .green : .red).bold()
                         Text("n° \(exam.attempt)").frame(width: 100, alignment: .center)
                         Button(action: { appData.removeExamResult(yearId: yearId, examId: exam.id) }) { Image(systemName: "trash").foregroundColor(.red) }.buttonStyle(.plain).frame(width: 30)
-                    }.padding(.horizontal, 10).padding(.vertical, 8); Divider()
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) { examToEdit = exam }
+                    
+                    Divider()
                 }
             }
-        }.background(Color(NSColor.controlBackgroundColor)).cornerRadius(8).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+        .sheet(item: $examToEdit) { exam in
+            EditExamResultSheet(appData: appData, yearId: yearId, exam: exam)
+        }
     }
 }
 
@@ -1317,7 +1418,54 @@ struct AddExamResultSheet: View {
     }
 }
 
-// MARK: - COMPOSANTS CONFIGURATION ET CALENDRIER (MODIFIÉS POUR LE DOUBLE CLIC)
+struct EditExamResultSheet: View {
+    @ObservedObject var appData: AppData
+    @Environment(\.dismiss) var dismiss
+    let yearId: UUID
+    let exam: ExamResult
+    
+    @State private var sessionName: String
+    @State private var courseCode: String
+    @State private var grade: Double
+    @State private var attempt: Int
+    
+    init(appData: AppData, yearId: UUID, exam: ExamResult) {
+        self.appData = appData
+        self.yearId = yearId
+        self.exam = exam
+        _sessionName = State(initialValue: exam.sessionName)
+        _courseCode = State(initialValue: exam.courseCode)
+        _grade = State(initialValue: exam.grade)
+        _attempt = State(initialValue: exam.attempt)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            Text("Modifier le résultat d'examen").font(.headline).frame(maxWidth: .infinity, alignment: .center)
+            Picker("Session", selection: $sessionName) { ForEach(["Janvier", "Juin", "Août"], id: \.self) { Text($0) } }.pickerStyle(.segmented)
+            VStack(alignment: .leading) {
+                Text("Cours passé").font(.caption)
+                Picker("", selection: $courseCode) { ForEach(appData.allParcoursCourses()) { c in Text("\(c.code) - \(c.name)").tag(c.code) } }.pickerStyle(.menu).padding(5).background(Color(NSColor.controlBackgroundColor)).cornerRadius(5)
+            }
+            HStack { VStack(alignment: .leading) { Text("Note Obtenue (/20)").font(.caption); TextField("", value: $grade, format: .number).textFieldStyle(.roundedBorder) }; VStack(alignment: .leading) { Text("Quantième tentative ?").font(.caption); Stepper("\(attempt)", value: $attempt, in: 1...10) } }
+            HStack {
+                Button("Annuler") { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Sauvegarder") {
+                    var updatedExam = exam
+                    updatedExam.sessionName = sessionName
+                    updatedExam.courseCode = courseCode
+                    updatedExam.grade = grade
+                    updatedExam.attempt = attempt
+                    appData.updateExamResult(yearId: yearId, exam: updatedExam)
+                    dismiss()
+                }.buttonStyle(.borderedProminent).disabled(courseCode.isEmpty).keyboardShortcut(.defaultAction)
+            }.padding(.top, 10)
+        }.padding().frame(width: 400)
+    }
+}
+
+// MARK: - COMPOSANTS CONFIGURATION ET CALENDRIER
 struct AddCourseSheet: View {
     @ObservedObject var appData: AppData
     @Binding var isPresented: Bool
@@ -1354,7 +1502,6 @@ struct PlanningView: View {
     }
 }
 
-// Séparation Helper View pour éviter l'explosion de complexité d'expression
 struct AppKitHStackWrapper: View {
     @Binding var selectedDate: Date
     @Binding var selectedType: String
@@ -1409,7 +1556,6 @@ struct CalendarCell: View {
     }
 }
 
-// NOUVEAU SOUS-COMPOSANT POUR EMPECHER LA SÉLECTION CLASSIQUE ET GÉRER LE DOUBLE-CLIC + ÉDITION
 struct EventRowView: View {
     @ObservedObject var appData: AppData
     let ev: CourseEvent
@@ -1486,7 +1632,7 @@ struct EventRowView: View {
     }
 }
 
-// MARK: - DETAIL DU COURS (MODIFIÉ AVEC OPACITÉ COMPLÉTION, ÉDITION TÂCHES ET SANS STREAK)
+// MARK: - DETAIL DU COURS
 struct CourseDetailView: View {
     @ObservedObject var appData: AppData
     let courseName: String
@@ -1504,7 +1650,6 @@ struct CourseDetailView: View {
     @State private var newLinkName = ""
     @State private var newLinkUrl = ""
     
-    // États pour l'édition de tâche
     @State private var editingTaskIndex: Int? = nil
     @State private var editTaskName = ""
     @State private var editTaskDesc = ""
@@ -1594,7 +1739,7 @@ struct CourseDetailView: View {
     func computeExamTarget(grading: [GradingItem], target: Double) -> (Double, Double) { let totalPoints = grading.reduce(0) { $0 + $1.total }; let earnedPoints = grading.reduce(0) { $0 + $1.score }; let examTotal = max(0, 20 - totalPoints); let neededExam = target - earnedPoints; return (examTotal, max(0, neededExam)) }
 }
 
-// MARK: - MENU BAR VIEW (SANS STREAK)
+// MARK: - MENU BAR VIEW
 struct MenuBarView: View {
     @ObservedObject var appData: AppData
     var body: some View {
@@ -1603,7 +1748,7 @@ struct MenuBarView: View {
                 HStack { Text("🎯 Focus du jour").font(.headline); Spacer() }.padding(.bottom, 5)
                 let todayStr = DateFormatter.yyyyMMdd.string(from: Date()); let todaysEvents = appData.schedule[todayStr] ?? []
                 if todaysEvents.isEmpty { Text("Rien de prévu aujourd'hui ! Profite de ton repos.").font(.subheadline).foregroundColor(.secondary) } else { ForEach(todaysEvents) { ev in if let course = appData.courses[ev.course] { VStack(alignment: .leading, spacing: 8) { HStack { Text("📚 **\(ev.course)**"); Spacer(); if let dayInfo = appData.currentStudyDayInfo(for: ev.course) { Text("Jour \(dayInfo.current)/\(dayInfo.total)").font(.caption).fontWeight(.bold).padding(.horizontal, 6).padding(.vertical, 2).background(Color(hex: course.colorHex).opacity(0.2)).foregroundColor(Color(hex: course.colorHex)).cornerRadius(4) } }; if !ev.description.isEmpty { Text("👉 \(ev.description)").font(.caption).foregroundColor(.secondary) }; CustomProgressBar(progress: appData.computeProgress(for: ev.course), color: Color(hex: course.colorHex), isMain: false); let totalPoints = course.grading.reduce(0) { $0 + $1.total }; let earnedPoints = course.grading.reduce(0) { $0 + $1.score }; let examTotal = max(0, 20 - totalPoints); let neededExam = max(0, course.passingGrade - earnedPoints); if examTotal > 0 { let percentage = (neededExam / examTotal) * 100; Text("Objectif examen : **\(String(format: "%.2f", neededExam)) / \(String(format: "%.2f", examTotal))** (\(String(format: "%.1f", percentage))%)").font(.caption2).foregroundColor(.secondary) } else { Text("🎉 Cours déjà validé !").font(.caption2).foregroundColor(.green) } }.padding(10).background(Color(NSColor.controlBackgroundColor)).cornerRadius(8) } } }
-                let todaysTodos = appData.getTodaysTodos(); if !todaysTodos.isEmpty { Divider(); Text("📝 À faire aujourd'hui").font(.headline).foregroundColor(.orange); ForEach(todaysTodos, id: \.todo.id) { item in HStack { Button(action: { appData.courses[item.courseName]?.todos?[item.todoIndex].isDone = true }) { Image(systemName: "circle") }.buttonStyle(.plain); VStack(alignment: .leading) { Text(item.todo.text).font(.subheadline); Text(item.courseName).font(.caption2).foregroundColor(Color(hex: item.colorHex)) } } } }
+                let todaysTodos = appData.getTodaysTodos(); if !todaysTodos.isEmpty { Divider(); Text("📝 À faire aujourd'hui").font(.headline).foregroundColor(.orange); ForEach(todaysTodos, id: \.todo.id) { item in HStack { Button(action: { appData.courses[item.courseName]?.todos?[item.todoIndex].isDone.toggle() }) { Image(systemName: item.todo.isDone ? "checkmark.circle.fill" : "circle").foregroundColor(item.todo.isDone ? .green : .gray) }.buttonStyle(.plain); VStack(alignment: .leading) { Text(item.todo.text).font(.subheadline).strikethrough(item.todo.isDone); Text(item.courseName).font(.caption2).foregroundColor(Color(hex: item.colorHex)) } } } }
                 Divider(); Text("📚 Progression par section").font(.headline).padding(.top, 5)
                 let grouped = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })
                 ForEach(grouped.keys.sorted(), id: \.self) { cat in Text(cat).font(.caption).foregroundColor(.secondary).padding(.top, 5); ForEach(grouped[cat]!.sorted(), id: \.self) { cName in let course = appData.courses[cName]!; HStack { Text(cName).font(.subheadline); Spacer(); Text("\(String(format: "%.2f", appData.computeProgress(for: cName) * 100)) %").font(.caption2) }; CustomProgressBar(progress: appData.computeProgress(for: cName), color: Color(hex: course.colorHex), isMain: false) } }
