@@ -3,7 +3,6 @@ import Charts
 import Foundation
 import Combine
 import UserNotifications
-import AppKit // Nécessaire pour NSWorkspace et le blocage d'apps
 
 // MARK: - FORMATTER PERSONNALISÉ
 extension NumberFormatter {
@@ -33,9 +32,7 @@ struct CategoryColorManager {
     
     static func color(for category: String) -> Color {
         let normalized = category.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if let existingColor = colorMap[normalized] {
-            return existingColor
-        }
+        if let existingColor = colorMap[normalized] { return existingColor }
         let newColor = palette[currentIndex % palette.count]
         colorMap[normalized] = newColor
         currentIndex += 1
@@ -44,11 +41,7 @@ struct CategoryColorManager {
 }
 
 // MARK: - EXTENSIONS COULEURS
-extension String {
-    func categoryColor() -> Color {
-        return CategoryColorManager.color(for: self)
-    }
-}
+extension String { func categoryColor() -> Color { return CategoryColorManager.color(for: self) } }
 
 extension Color {
     init(hex: String) {
@@ -80,110 +73,30 @@ extension DateFormatter {
 }
 
 // MARK: - MODELS BLOCUS
-struct TaskItem: Identifiable, Codable {
-    var id = UUID()
-    var name: String
-    var description: String?
-    var total: Double
-    var done: Double
-}
-
-struct GradingItem: Identifiable, Codable {
-    var id = UUID()
-    var name: String
-    var total: Double
-    var score: Double
-}
-
-struct CourseEvent: Identifiable, Codable {
-    var id = UUID()
-    var type: String
-    var course: String
-    var description: String
-}
-
-struct TodoItem: Identifiable, Codable {
-    var id = UUID()
-    var text: String
-    var dueDate: Date?
-    var isDone: Bool = false
-}
-
-struct LinkItem: Identifiable, Codable {
-    var id = UUID()
-    var name: String
-    var url: String
-}
+struct TaskItem: Identifiable, Codable { var id = UUID(); var name: String; var description: String?; var total: Double; var done: Double }
+struct GradingItem: Identifiable, Codable { var id = UUID(); var name: String; var total: Double; var score: Double }
+struct CourseEvent: Identifiable, Codable { var id = UUID(); var type: String; var course: String; var description: String }
+struct TodoItem: Identifiable, Codable { var id = UUID(); var text: String; var dueDate: Date?; var isDone: Bool = false }
+struct LinkItem: Identifiable, Codable { var id = UUID(); var name: String; var url: String }
 
 struct Course: Codable {
-    var colorHex: String
-    var tasks: [TaskItem]
-    var grading: [GradingItem]
-    var todos: [TodoItem]?
-    var links: [LinkItem]?
-    var passingGrade: Double
-    var fullName: String
-    var professor: String
-    var examStartTime: String
-    var examEndTime: String
-    var examLocation: String
-    var category: String?
+    var colorHex: String; var tasks: [TaskItem]; var grading: [GradingItem]; var todos: [TodoItem]?
+    var links: [LinkItem]?; var passingGrade: Double; var fullName: String; var professor: String
+    var examStartTime: String; var examEndTime: String; var examLocation: String; var category: String?
 }
 
 // MARK: - MODELS PARCOURS
-struct ParcoursCourse: Identifiable, Codable {
-    var id = UUID()
-    var code: String
-    var name: String
-    var credits: Double
-    var category: String
-    var option: String?
-    var grade: Double
-    var attempts: Int
-    var semester: String
-}
-
-struct ExamResult: Identifiable, Codable {
-    var id = UUID()
-    var sessionName: String
-    var courseCode: String
-    var grade: Double
-    var attempt: Int
-}
-
-struct DegreeProgram: Identifiable, Codable {
-    var id = UUID()
-    var name: String
-    var school: String
-    var courses: [ParcoursCourse]
-}
-
-struct AcademicYearTimeline: Identifiable, Codable {
-    var id = UUID()
-    var yearString: String
-    var exams: [ExamResult]
-}
+struct ParcoursCourse: Identifiable, Codable { var id = UUID(); var code: String; var name: String; var credits: Double; var category: String; var option: String?; var grade: Double; var attempts: Int; var semester: String }
+struct ExamResult: Identifiable, Codable { var id = UUID(); var sessionName: String; var courseCode: String; var grade: Double; var attempt: Int }
+struct DegreeProgram: Identifiable, Codable { var id = UUID(); var name: String; var school: String; var courses: [ParcoursCourse] }
+struct AcademicYearTimeline: Identifiable, Codable { var id = UUID(); var yearString: String; var exams: [ExamResult] }
 
 // MARK: - TYPES DE ZOOM
-enum ProgramZoomType: String, Identifiable {
-    case tableQ1, tableQ2, chartNotes, chartCat
-    var id: String { self.rawValue }
-}
-
-enum YearZoomType: String, Identifiable {
-    case examsJan, examsJun, examsAug, chartJan, chartJun, chartAug
-    var id: String { self.rawValue }
-}
-
-enum GeneralZoomType: String, Identifiable {
-    case equilibre, repartition, points
-    var id: String { self.rawValue }
-}
-
-enum DashboardZoomType: String, Identifiable {
-    case chartEvolution, chartGlobalCat, chartHistogram, chartSessions, chartCreditsYear, chartGradeCategory
-    var id: String { self.rawValue }
-}
+enum ProgramZoomType: String, Identifiable { case tableQ1, tableQ2, chartNotes, chartCat; var id: String { self.rawValue } }
+enum YearZoomType: String, Identifiable { case examsJan, examsJun, examsAug, chartJan, chartJun, chartAug; var id: String { self.rawValue } }
+enum GeneralZoomType: String, Identifiable { case equilibre, repartition, points; var id: String { self.rawValue } }
+enum DashboardZoomType: String, Identifiable { case chartEvolution, chartGlobalCat, chartHistogram, chartSessions, chartCreditsYear, chartGradeCategory; var id: String { self.rawValue } }
+enum FocusZoomType: String, Identifiable { case chart7Days, chartComments; var id: String { self.rawValue } }
 
 // MARK: - VIEW MODEL (AppData)
 class AppData: ObservableObject {
@@ -192,8 +105,9 @@ class AppData: ObservableObject {
     @Published var degreePrograms: [DegreeProgram] = [] { didSet { save() } }
     @Published var academicYearsTimeline: [AcademicYearTimeline] = [] { didSet { save() } }
     
-    // NOUVEAU : Temps de focus quotidien (Clé: Date yyyy-MM-dd, Valeur: Secondes)
+    // Temps de focus
     @Published var dailyFocusTime: [String: Double] = [:] { didSet { save() } }
+    @Published var focusTimePerComment: [String: Double] = [:] { didSet { save() } } // NOUVEAU: Temps par commentaire
     
     init() {
         load()
@@ -206,6 +120,7 @@ class AppData: ObservableObject {
         if let encodedPrograms = try? JSONEncoder().encode(degreePrograms) { UserDefaults.standard.set(encodedPrograms, forKey: "degreePrograms") }
         if let encodedTimelines = try? JSONEncoder().encode(academicYearsTimeline) { UserDefaults.standard.set(encodedTimelines, forKey: "academicYearsTimeline") }
         if let encodedFocus = try? JSONEncoder().encode(dailyFocusTime) { UserDefaults.standard.set(encodedFocus, forKey: "dailyFocusTime") }
+        if let encodedFocusComments = try? JSONEncoder().encode(focusTimePerComment) { UserDefaults.standard.set(encodedFocusComments, forKey: "focusTimePerComment") }
         updateNotifications()
     }
     
@@ -215,235 +130,44 @@ class AppData: ObservableObject {
         let rawPrograms = UserDefaults.standard.data(forKey: "degreePrograms")
         let rawTimelines = UserDefaults.standard.data(forKey: "academicYearsTimeline")
         let rawFocus = UserDefaults.standard.data(forKey: "dailyFocusTime")
+        let rawFocusComments = UserDefaults.standard.data(forKey: "focusTimePerComment")
         
         if let data = rawCourses, let decoded = try? JSONDecoder().decode([String: Course].self, from: data) { self.courses = decoded }
         if let data = rawSchedule, let decoded = try? JSONDecoder().decode([String: [CourseEvent]].self, from: data) { self.schedule = decoded }
         if let data = rawPrograms, let decoded = try? JSONDecoder().decode([DegreeProgram].self, from: data) { self.degreePrograms = decoded }
         if let data = rawTimelines, let decoded = try? JSONDecoder().decode([AcademicYearTimeline].self, from: data) { self.academicYearsTimeline = decoded }
         if let data = rawFocus, let decoded = try? JSONDecoder().decode([String: Double].self, from: data) { self.dailyFocusTime = decoded }
+        if let data = rawFocusComments, let decoded = try? JSONDecoder().decode([String: Double].self, from: data) { self.focusTimePerComment = decoded }
     }
     
-    func allParcoursCourses() -> [ParcoursCourse] {
-        var uniqueCourses: [String: ParcoursCourse] = [:]
-        for prog in degreePrograms {
-            for course in prog.courses {
-                uniqueCourses[course.code] = course
-            }
-        }
-        return Array(uniqueCourses.values).sorted(by: { $0.code < $1.code })
-    }
-    
-    func getParcoursCourse(code: String) -> ParcoursCourse? {
-        for prog in degreePrograms {
-            if let c = prog.courses.first(where: { $0.code == code }) { return c }
-        }
-        return nil
-    }
-    
-    func totalAttemptsFor(courseCode: String) -> Int {
-        var maxAttempt = 0
-        for year in academicYearsTimeline {
-            let attempts = year.exams.filter { $0.courseCode == courseCode }.map { $0.attempt }
-            if let m = attempts.max(), m > maxAttempt { maxAttempt = m }
-        }
-        if maxAttempt == 0 {
-            return getParcoursCourse(code: courseCode)?.attempts ?? 1
-        }
-        return maxAttempt
-    }
-    
-    func bestGradeFor(courseCode: String) -> Double {
-        var bestG: Double = 0
-        if let baseCourse = getParcoursCourse(code: courseCode) {
-            bestG = baseCourse.grade
-        }
-        for year in academicYearsTimeline {
-            let maxEx = year.exams.filter({ $0.courseCode == courseCode }).map({ $0.grade }).max() ?? 0
-            bestG = max(bestG, maxEx)
-        }
-        return bestG
-    }
-    
-    func globalParcoursStats() -> (earned: Double, total: Double, gpa: Double) {
-        let allCourses = allParcoursCourses()
-        var earned: Double = 0
-        var total: Double = 0
-        var weightedSum: Double = 0
-        
-        for course in allCourses {
-            total += course.credits
-            let bestG = bestGradeFor(courseCode: course.code)
-            if bestG >= 10.0 { earned += course.credits }
-            weightedSum += bestG * course.credits
-        }
-        return (earned, total, total > 0 ? weightedSum / total : 0)
-    }
-    
-    func programStats(programId: UUID) -> (earned: Double, total: Double, gpa: Double) {
-        guard let prog = degreePrograms.first(where: { $0.id == programId }) else { return (0, 0, 0) }
-        var earned: Double = 0
-        var total: Double = 0
-        var weightedSum: Double = 0
-        
-        for course in prog.courses {
-            total += course.credits
-            let bestG = bestGradeFor(courseCode: course.code)
-            if bestG >= 10.0 { earned += course.credits }
-            weightedSum += bestG * course.credits
-        }
-        return (earned, total, total > 0 ? weightedSum / total : 0)
-    }
-    
-    func yearStats(yearId: UUID) -> (earned: Double, totalAttempted: Double, gpa: Double) {
-        guard let year = academicYearsTimeline.first(where: { $0.id == yearId }) else { return (0, 0, 0) }
-        
-        let involvedCodes = Set(year.exams.map { $0.courseCode })
-        var earned: Double = 0
-        var totalAttempted: Double = 0
-        var weightedSum: Double = 0
-        
-        for code in involvedCodes {
-            let credits = getParcoursCourse(code: code)?.credits ?? 0
-            let bestThisYear = year.exams.filter { $0.courseCode == code }.map { $0.grade }.max() ?? 0
-            
-            totalAttempted += credits
-            if bestThisYear >= 10.0 { earned += credits }
-            weightedSum += bestThisYear * credits
-        }
-        return (earned, totalAttempted, totalAttempted > 0 ? weightedSum / totalAttempted : 0)
-    }
-    
-    func addParcoursCourse(programId: UUID, course: ParcoursCourse) {
-        objectWillChange.send()
-        if let index = degreePrograms.firstIndex(where: { $0.id == programId }) {
-            degreePrograms[index].courses.append(course); save()
-        }
-    }
-    func updateParcoursCourse(programId: UUID, course: ParcoursCourse) {
-        objectWillChange.send()
-        if let pIndex = degreePrograms.firstIndex(where: { $0.id == programId }),
-           let cIndex = degreePrograms[pIndex].courses.firstIndex(where: { $0.id == course.id }) {
-            degreePrograms[pIndex].courses[cIndex] = course; save()
-        }
-    }
-    func removeParcoursCourse(programId: UUID, courseId: UUID) {
-        objectWillChange.send()
-        if let index = degreePrograms.firstIndex(where: { $0.id == programId }) {
-            degreePrograms[index].courses.removeAll(where: { $0.id == courseId }); save()
-        }
-    }
-    
-    func addExamResult(yearId: UUID, exam: ExamResult) {
-        objectWillChange.send()
-        if let index = academicYearsTimeline.firstIndex(where: { $0.id == yearId }) {
-            academicYearsTimeline[index].exams.append(exam); save()
-        }
-    }
-    func removeExamResult(yearId: UUID, examId: UUID) {
-        objectWillChange.send()
-        if let index = academicYearsTimeline.firstIndex(where: { $0.id == yearId }) {
-            academicYearsTimeline[index].exams.removeAll(where: { $0.id == examId }); save()
-        }
-    }
-    func updateExamResult(yearId: UUID, exam: ExamResult) {
-        objectWillChange.send()
-        if let yIndex = academicYearsTimeline.firstIndex(where: { $0.id == yearId }),
-           let eIndex = academicYearsTimeline[yIndex].exams.firstIndex(where: { $0.id == exam.id }) {
-            academicYearsTimeline[yIndex].exams[eIndex] = exam
-            save()
-        }
-    }
+    func allParcoursCourses() -> [ParcoursCourse] { var uniqueCourses: [String: ParcoursCourse] = [:]; for prog in degreePrograms { for course in prog.courses { uniqueCourses[course.code] = course } }; return Array(uniqueCourses.values).sorted(by: { $0.code < $1.code }) }
+    func getParcoursCourse(code: String) -> ParcoursCourse? { for prog in degreePrograms { if let c = prog.courses.first(where: { $0.code == code }) { return c } }; return nil }
+    func totalAttemptsFor(courseCode: String) -> Int { var maxAttempt = 0; for year in academicYearsTimeline { let attempts = year.exams.filter { $0.courseCode == courseCode }.map { $0.attempt }; if let m = attempts.max(), m > maxAttempt { maxAttempt = m } }; if maxAttempt == 0 { return getParcoursCourse(code: courseCode)?.attempts ?? 1 }; return maxAttempt }
+    func bestGradeFor(courseCode: String) -> Double { var bestG: Double = 0; if let baseCourse = getParcoursCourse(code: courseCode) { bestG = baseCourse.grade }; for year in academicYearsTimeline { let maxEx = year.exams.filter({ $0.courseCode == courseCode }).map({ $0.grade }).max() ?? 0; bestG = max(bestG, maxEx) }; return bestG }
+    func globalParcoursStats() -> (earned: Double, total: Double, gpa: Double) { let allCourses = allParcoursCourses(); var earned: Double = 0; var total: Double = 0; var weightedSum: Double = 0; for course in allCourses { total += course.credits; let bestG = bestGradeFor(courseCode: course.code); if bestG >= 10.0 { earned += course.credits }; weightedSum += bestG * course.credits }; return (earned, total, total > 0 ? weightedSum / total : 0) }
+    func programStats(programId: UUID) -> (earned: Double, total: Double, gpa: Double) { guard let prog = degreePrograms.first(where: { $0.id == programId }) else { return (0, 0, 0) }; var earned: Double = 0; var total: Double = 0; var weightedSum: Double = 0; for course in prog.courses { total += course.credits; let bestG = bestGradeFor(courseCode: course.code); if bestG >= 10.0 { earned += course.credits }; weightedSum += bestG * course.credits }; return (earned, total, total > 0 ? weightedSum / total : 0) }
+    func yearStats(yearId: UUID) -> (earned: Double, totalAttempted: Double, gpa: Double) { guard let year = academicYearsTimeline.first(where: { $0.id == yearId }) else { return (0, 0, 0) }; let involvedCodes = Set(year.exams.map { $0.courseCode }); var earned: Double = 0; var totalAttempted: Double = 0; var weightedSum: Double = 0; for code in involvedCodes { let credits = getParcoursCourse(code: code)?.credits ?? 0; let bestThisYear = year.exams.filter { $0.courseCode == code }.map { $0.grade }.max() ?? 0; totalAttempted += credits; if bestThisYear >= 10.0 { earned += credits }; weightedSum += bestThisYear * credits }; return (earned, totalAttempted, totalAttempted > 0 ? weightedSum / totalAttempted : 0) }
+    func addParcoursCourse(programId: UUID, course: ParcoursCourse) { objectWillChange.send(); if let index = degreePrograms.firstIndex(where: { $0.id == programId }) { degreePrograms[index].courses.append(course); save() } }
+    func updateParcoursCourse(programId: UUID, course: ParcoursCourse) { objectWillChange.send(); if let pIndex = degreePrograms.firstIndex(where: { $0.id == programId }), let cIndex = degreePrograms[pIndex].courses.firstIndex(where: { $0.id == course.id }) { degreePrograms[pIndex].courses[cIndex] = course; save() } }
+    func removeParcoursCourse(programId: UUID, courseId: UUID) { objectWillChange.send(); if let index = degreePrograms.firstIndex(where: { $0.id == programId }) { degreePrograms[index].courses.removeAll(where: { $0.id == courseId }); save() } }
+    func addExamResult(yearId: UUID, exam: ExamResult) { objectWillChange.send(); if let index = academicYearsTimeline.firstIndex(where: { $0.id == yearId }) { academicYearsTimeline[index].exams.append(exam); save() } }
+    func removeExamResult(yearId: UUID, examId: UUID) { objectWillChange.send(); if let index = academicYearsTimeline.firstIndex(where: { $0.id == yearId }) { academicYearsTimeline[index].exams.removeAll(where: { $0.id == examId }); save() } }
+    func updateExamResult(yearId: UUID, exam: ExamResult) { objectWillChange.send(); if let yIndex = academicYearsTimeline.firstIndex(where: { $0.id == yearId }), let eIndex = academicYearsTimeline[yIndex].exams.firstIndex(where: { $0.id == exam.id }) { academicYearsTimeline[yIndex].exams[eIndex] = exam; save() } }
     
     // --- NOTIFICATIONS ---
     func requestNotificationPermission() { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in } }
-    func updateNotifications() {
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-        for (dateStr, events) in schedule {
-            if let date = DateFormatter.yyyyMMdd.date(from: dateStr) {
-                if events.contains(where: { $0.type == "Étude" }) { scheduleNotification(title: "🎯 Focus du jour", body: "Tu as des sessions d'étude prévues aujourd'hui ! Bon blocus.", date: date, hour: 9, minute: 0, id: "study-\(dateStr)") }
-                let exams = events.filter { $0.type == "Examen" }
-                for exam in exams {
-                    if let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: date) { scheduleNotification(title: "🎒 Prêt pour l'examen ?", body: "Demain tu as examen de \(exam.course). Prépare tes affaires !", date: dayBefore, hour: 20, minute: 0, id: "exam-\(exam.id.uuidString)") }
-                }
-            }
-        }
-        for (cName, course) in courses {
-            if let todos = course.todos {
-                for todo in todos {
-                    if let dueDate = todo.dueDate, !todo.isDone {
-                        if let notifDate = Calendar.current.date(byAdding: .hour, value: -1, to: dueDate), notifDate > Date() {
-                            let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: notifDate)
-                            scheduleNotification(title: "⏳ Tâche à terminer bientôt", body: "\(todo.text) (\(cName))", components: comps, id: "todo-\(todo.id.uuidString)")
-                        }
-                    }
-                }
-            }
-        }
-    }
-    private func scheduleNotification(title: String, body: String, date: Date, hour: Int, minute: Int, id: String) {
-        var components = Calendar.current.dateComponents([.year, .month, .day], from: date)
-        components.hour = hour; components.minute = minute
-        if let targetDate = Calendar.current.date(from: components), targetDate > Date() { scheduleNotification(title: title, body: body, components: components, id: id) }
-    }
-    private func scheduleNotification(title: String, body: String, components: DateComponents, id: String) {
-        let content = UNMutableNotificationContent(); content.title = title; content.body = body; content.sound = .default
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
-        UNUserNotificationCenter.current().add(request)
-    }
+    func updateNotifications() { UNUserNotificationCenter.current().removeAllPendingNotificationRequests(); for (dateStr, events) in schedule { if let date = DateFormatter.yyyyMMdd.date(from: dateStr) { if events.contains(where: { $0.type == "Étude" }) { scheduleNotification(title: "🎯 Focus du jour", body: "Tu as des sessions d'étude prévues aujourd'hui ! Bon blocus.", date: date, hour: 9, minute: 0, id: "study-\(dateStr)") }; let exams = events.filter { $0.type == "Examen" }; for exam in exams { if let dayBefore = Calendar.current.date(byAdding: .day, value: -1, to: date) { scheduleNotification(title: "🎒 Prêt pour l'examen ?", body: "Demain tu as examen de \(exam.course). Prépare tes affaires !", date: dayBefore, hour: 20, minute: 0, id: "exam-\(exam.id.uuidString)") } } } }; for (cName, course) in courses { if let todos = course.todos { for todo in todos { if let dueDate = todo.dueDate, !todo.isDone { if let notifDate = Calendar.current.date(byAdding: .hour, value: -1, to: dueDate), notifDate > Date() { let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: notifDate); scheduleNotification(title: "⏳ Tâche à terminer bientôt", body: "\(todo.text) (\(cName))", components: comps, id: "todo-\(todo.id.uuidString)") } } } } } }
+    private func scheduleNotification(title: String, body: String, date: Date, hour: Int, minute: Int, id: String) { var components = Calendar.current.dateComponents([.year, .month, .day], from: date); components.hour = hour; components.minute = minute; if let targetDate = Calendar.current.date(from: components), targetDate > Date() { scheduleNotification(title: title, body: body, components: components, id: id) } }
+    private func scheduleNotification(title: String, body: String, components: DateComponents, id: String) { let content = UNMutableNotificationContent(); content.title = title; content.body = body; content.sound = .default; let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false); let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger); UNUserNotificationCenter.current().add(request) }
     
     // --- GESTION COURS BLOCUS ---
-    func renameCourse(oldName: String, newName: String) {
-        guard !newName.isEmpty, oldName != newName, courses[newName] == nil, let course = courses[oldName] else { return }
-        courses[newName] = course; courses.removeValue(forKey: oldName)
-        for (date, events) in schedule {
-            var updatedEvents = events
-            for i in 0..<updatedEvents.count { if updatedEvents[i].course == oldName { updatedEvents[i].course = newName } }
-            schedule[date] = updatedEvents
-        }
-        save()
-    }
-    func addScheduleEvent(date: Date, type: String, course: String, description: String) {
-        let dStr = DateFormatter.yyyyMMdd.string(from: date); var currentEvents = schedule[dStr] ?? []
-        currentEvents.append(CourseEvent(type: type, course: course, description: description))
-        schedule[dStr] = currentEvents; save()
-    }
-    func removeScheduleEvent(dateStr: String, eventId: UUID) {
-        if var currentEvents = schedule[dateStr] {
-            currentEvents.removeAll(where: { $0.id == eventId })
-            if currentEvents.isEmpty { schedule.removeValue(forKey: dateStr) } else { schedule[dateStr] = currentEvents }; save()
-        }
-    }
-    func computeProgress(for course: String) -> Double {
-        guard let c = courses[course] else { return 0 }
-        let totalPossible = c.tasks.reduce(0) { $0 + $1.total }
-        return totalPossible > 0 ? c.tasks.reduce(0) { $0 + $1.done } / totalPossible : 0
-    }
-    func computeStudyDays(for course: String) -> (total: Int, remaining: Int) {
-        let todayStr = DateFormatter.yyyyMMdd.string(from: Date()); var total = 0, remaining = 0
-        for (dateStr, events) in schedule {
-            for ev in events where ev.course == course && ev.type == "Étude" { total += 1; if dateStr >= todayStr { remaining += 1 } }
-        }
-        return (total, remaining)
-    }
-    func currentStudyDayInfo(for course: String) -> (current: Int, total: Int)? {
-        var studyDates: [String] = []
-        for (dateStr, events) in schedule { if events.contains(where: { $0.course == course && $0.type == "Étude" }) { studyDates.append(dateStr) } }
-        studyDates.sort()
-        if let currentIndex = studyDates.firstIndex(of: DateFormatter.yyyyMMdd.string(from: Date())) { return (currentIndex + 1, studyDates.count) }
-        return nil
-    }
-    func getTodaysTodos() -> [(courseName: String, todo: TodoItem, colorHex: String, todoIndex: Int)] {
-        var result: [(String, TodoItem, String, Int)] = []
-        for (cName, course) in courses {
-            if let todos = course.todos {
-                for (index, todo) in todos.enumerated() {
-                    if let date = todo.dueDate, Calendar.current.isDateInToday(date), !todo.isDone { result.append((cName, todo, course.colorHex, index)) }
-                }
-            }
-        }
-        return result
-    }
+    func renameCourse(oldName: String, newName: String) { guard !newName.isEmpty, oldName != newName, courses[newName] == nil, let course = courses[oldName] else { return }; courses[newName] = course; courses.removeValue(forKey: oldName); for (date, events) in schedule { var updatedEvents = events; for i in 0..<updatedEvents.count { if updatedEvents[i].course == oldName { updatedEvents[i].course = newName } }; schedule[date] = updatedEvents }; save() }
+    func addScheduleEvent(date: Date, type: String, course: String, description: String) { let dStr = DateFormatter.yyyyMMdd.string(from: date); var currentEvents = schedule[dStr] ?? []; currentEvents.append(CourseEvent(type: type, course: course, description: description)); schedule[dStr] = currentEvents; save() }
+    func removeScheduleEvent(dateStr: String, eventId: UUID) { if var currentEvents = schedule[dateStr] { currentEvents.removeAll(where: { $0.id == eventId }); if currentEvents.isEmpty { schedule.removeValue(forKey: dateStr) } else { schedule[dateStr] = currentEvents }; save() } }
+    func computeProgress(for course: String) -> Double { guard let c = courses[course] else { return 0 }; let totalPossible = c.tasks.reduce(0) { $0 + $1.total }; return totalPossible > 0 ? c.tasks.reduce(0) { $0 + $1.done } / totalPossible : 0 }
+    func computeStudyDays(for course: String) -> (total: Int, remaining: Int) { let todayStr = DateFormatter.yyyyMMdd.string(from: Date()); var total = 0, remaining = 0; for (dateStr, events) in schedule { for ev in events where ev.course == course && ev.type == "Étude" { total += 1; if dateStr >= todayStr { remaining += 1 } } }; return (total, remaining) }
+    func currentStudyDayInfo(for course: String) -> (current: Int, total: Int)? { var studyDates: [String] = []; for (dateStr, events) in schedule { if events.contains(where: { $0.course == course && $0.type == "Étude" }) { studyDates.append(dateStr) } }; studyDates.sort(); if let currentIndex = studyDates.firstIndex(of: DateFormatter.yyyyMMdd.string(from: Date())) { return (currentIndex + 1, studyDates.count) }; return nil }
+    func getTodaysTodos() -> [(courseName: String, todo: TodoItem, colorHex: String, todoIndex: Int)] { var result: [(String, TodoItem, String, Int)] = []; for (cName, course) in courses { if let todos = course.todos { for (index, todo) in todos.enumerated() { if let date = todo.dueDate, Calendar.current.isDateInToday(date), !todo.isDone { result.append((cName, todo, course.colorHex, index)) } } } }; return result }
 }
 
 // MARK: - MAIN VIEW
@@ -459,7 +183,7 @@ struct ContentView: View {
                     NavigationLink("📊 Général", value: "Général")
                     NavigationLink("📅 Planning", value: "Planning")
                     NavigationLink("🎓 Parcours", value: "Parcours")
-                    NavigationLink("🎧 Focus", value: "Focus") // NOUVEL ONGLET ICI
+                    NavigationLink("🎧 Focus", value: "Focus")
                 }
                 let groupedCourses = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })
                 ForEach(groupedCourses.keys.sorted(), id: \.self) { category in
@@ -472,7 +196,7 @@ struct ContentView: View {
             if selection == "Général" { GeneralView(appData: appData) }
             else if selection == "Planning" { PlanningView(appData: appData) }
             else if selection == "Parcours" { ParcoursMainView(appData: appData) }
-            else if selection == "Focus" { FocusView(appData: appData) } // NOUVELLE PAGE ICI
+            else if selection == "Focus" { FocusView(appData: appData) }
             else if let courseName = selection, appData.courses.keys.contains(courseName) { CourseDetailView(appData: appData, courseName: courseName, selection: $selection) }
             else { Text("Sélectionne un élément dans le menu").foregroundColor(.secondary) }
         }
@@ -481,117 +205,119 @@ struct ContentView: View {
     }
 }
 
-// MARK: - VUE FOCUS 🎧 (NOUVEAU)
+// MARK: - VUE FOCUS 🎧
 struct FocusView: View {
     @ObservedObject var appData: AppData
     
     @State private var isRunning = false
-    @State private var isPomodoro = true // true = Pomodoro (décompte 25 min), false = Minuteur (chronomètre classique)
-    @State private var timeRemaining: Int = 25 * 60
-    @State private var timeElapsed: Int = 0
-    
-    @State private var blockedAppsInput: String = "Discord, Messages, Safari"
+    @State private var timeElapsed: Int = 0 // Temps de la session en cours
+    @State private var currentComment: String = "" // Commentaire de la session
     @State private var timer: Timer?
-    @State private var secondsSinceLastSave = 0
+    @State private var zoomedItem: FocusZoomType?
     
+    // Format HH:MM:SS
     var formattedTime: String {
-        let totalSeconds = isPomodoro ? timeRemaining : timeElapsed
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
+        let h = timeElapsed / 3600
+        let m = (timeElapsed % 3600) / 60
+        let s = timeElapsed % 60
+        if h > 0 { return String(format: "%02d:%02d:%02d", h, m, s) }
+        return String(format: "%02d:%02d", m, s)
     }
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 40) {
+            VStack(spacing: 30) {
                 HStack { Text("🎧 Mode Focus").font(.largeTitle).bold(); Spacer() }
                 
-                HStack(alignment: .top, spacing: 30) {
-                    // ZONE GAUCHE : LE TIMER
-                    VStack(spacing: 30) {
-                        Picker("Mode", selection: $isPomodoro) {
-                            Text("Pomodoro (25min)").tag(true)
-                            Text("Minuteur classique").tag(false)
-                        }
-                        .pickerStyle(.segmented)
+                // --- ZONE DU CHRONOMÈTRE ---
+                VStack(spacing: 20) {
+                    TextField("Sujet / Commentaire de la session (ex: LINFO2365)...", text: $currentComment)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 400)
                         .disabled(isRunning)
-                        .frame(width: 250)
-                        
-                        ZStack {
-                            Circle()
-                                .stroke(lineWidth: 15)
-                                .opacity(0.2)
-                                .foregroundColor(isRunning ? .red : .blue)
-                            
-                            Circle()
-                                .trim(from: 0.0, to: progressValue)
-                                .stroke(style: StrokeStyle(lineWidth: 15, lineCap: .round, lineJoin: .round))
-                                .foregroundColor(isRunning ? .red : .blue)
-                                .rotationEffect(Angle(degrees: 270.0))
-                                .animation(.linear, value: progressValue)
-                            
-                            Text(formattedTime)
-                                .font(.system(size: 60, weight: .bold, design: .monospaced))
+                        .multilineTextAlignment(.center)
+                    
+                    Text(formattedTime)
+                        .font(.system(size: 80, weight: .bold, design: .monospaced))
+                        .foregroundColor(isRunning ? .red : .primary)
+                        .padding(.vertical, 20)
+                    
+                    HStack(spacing: 30) {
+                        Button(action: toggleTimer) {
+                            Image(systemName: isRunning ? "pause.fill" : "play.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white)
+                                .frame(width: 80, height: 80)
+                                .background(isRunning ? Color.orange : Color.green)
+                                .clipShape(Circle())
                         }
-                        .frame(width: 250, height: 250)
+                        .buttonStyle(.plain)
                         
-                        HStack(spacing: 20) {
-                            Button(action: toggleTimer) {
-                                Image(systemName: isRunning ? "pause.fill" : "play.fill")
-                                    .font(.title)
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .background(isRunning ? Color.orange : Color.green)
-                                    .clipShape(Circle())
-                            }
-                            .buttonStyle(.plain)
-                            
-                            Button(action: resetTimer) {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.title)
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .background(Color.gray)
-                                    .clipShape(Circle())
-                            }
-                            .buttonStyle(.plain)
+                        Button(action: resetSessionTimer) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 25))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Color.gray)
+                                .clipShape(Circle())
                         }
+                        .buttonStyle(.plain)
+                        .disabled(isRunning) // On évite de réinitialiser pendant que ça tourne
+                        .opacity(isRunning ? 0.5 : 1.0)
+                    }
+                }
+                .padding(40)
+                .frame(maxWidth: .infinity)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(15)
+                
+                Divider()
+                
+                // --- ZONE DES GRAPHIQUES ---
+                HStack(alignment: .top, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("📊 Focus (7 derniers jours)").font(.title2).bold()
+                            Spacer()
+                            Button(action: { zoomedItem = .chart7Days }) { Image(systemName: "plus.magnifyingglass") }
+                        }
+                        FocusTimeChart(appData: appData).frame(height: 250)
                     }
                     .padding()
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(15)
                     
-                    // ZONE DROITE : PARAMÈTRES ET BLOCAGE
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text("🚫 Bloqueur d'Applications").font(.title2).bold()
-                        Text("Ces applications se fermeront automatiquement et ne pourront pas être ouvertes tant que le mode Focus est actif.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        TextEditor(text: $blockedAppsInput)
-                            .font(.system(size: 14))
-                            .frame(height: 100)
-                            .padding(4)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(8)
-                            .disabled(isRunning)
-                        
-                        Text("Astuce : Sépare les noms par des virgules (ex: Safari, Discord)").font(.caption2).foregroundColor(.gray)
-                        
-                        Spacer()
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("🏷️ Temps par commentaire").font(.title2).bold()
+                            Spacer()
+                            Button(action: { zoomedItem = .chartComments }) { Image(systemName: "plus.magnifyingglass") }
+                        }
+                        FocusCommentsChart(appData: appData).frame(height: 250)
                     }
                     .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(15)
                 }
                 
                 Divider()
                 
-                // ZONE BAS : STATISTIQUES DU FOCUS
+                // --- ZONE CALENDRIER DE FOCUS (2 MOIS) ---
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("📊 Temps de Focus (7 derniers jours)").font(.title2).bold()
-                    FocusTimeChart(appData: appData).frame(height: 250)
+                    Text("🗓️ Historique Complet").font(.title2).bold()
+                    let today = Date()
+                    let cal = Calendar.current
+                    let currentMonth = cal.component(.month, from: today)
+                    let currentYear = cal.component(.year, from: today)
+                    
+                    let prevMonthDate = cal.date(byAdding: .month, value: -1, to: today)!
+                    let prevMonth = cal.component(.month, from: prevMonthDate)
+                    let prevYear = cal.component(.year, from: prevMonthDate)
+                    
+                    HStack(alignment: .top, spacing: 20) {
+                        FocusMonthCalendarView(appData: appData, year: prevYear, month: prevMonth)
+                        FocusMonthCalendarView(appData: appData, year: currentYear, month: currentMonth)
+                    }
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
@@ -600,16 +326,9 @@ struct FocusView: View {
             }.padding()
         }
         .onDisappear {
-            stopTimer() // Sécurité : On arrête le timer si l'utilisateur quitte la page
+            stopTimer() // Sécurité
         }
-    }
-    
-    var progressValue: CGFloat {
-        if isPomodoro {
-            return CGFloat(timeRemaining) / CGFloat(25 * 60)
-        } else {
-            return 1.0 // Le chrono tourne en positif, donc le cercle reste entier.
-        }
+        .sheet(item: $zoomedItem) { zItem in FocusZoomModalView(appData: appData, zoomType: zItem) }
     }
     
     private func toggleTimer() {
@@ -630,75 +349,64 @@ struct FocusView: View {
         timer = nil
     }
     
-    private func resetTimer() {
-        stopTimer()
-        timeRemaining = 25 * 60
-        timeElapsed = 0
+    private func resetSessionTimer() {
+        timeElapsed = 0 // Réinitialise juste la vue de la session actuelle, les données accumulées en fond restent !
     }
     
     private func timerTick() {
-        // Logique de temps
-        if isPomodoro {
-            if timeRemaining > 0 { timeRemaining -= 1 }
-            else { stopTimer(); resetTimer() } // Fin du Pomodoro
-        } else {
-            timeElapsed += 1
-        }
+        timeElapsed += 1
         
-        // Sauvegarde du temps total d'étude
-        secondsSinceLastSave += 1
+        // 1. Sauvegarde du temps total quotidien
         let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
         let currentTotal = appData.dailyFocusTime[todayStr] ?? 0.0
         appData.dailyFocusTime[todayStr] = currentTotal + 1.0
         
-        // Blocage agressif des applications
-        enforceAppBlocking()
-    }
-    
-    private func enforceAppBlocking() {
-        // On récupère la liste des apps à bloquer en nettoyant les espaces
-        let appsToBlock = blockedAppsInput.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-        
-        // On vérifie toutes les apps ouvertes sur le Mac
-        for app in NSWorkspace.shared.runningApplications {
-            if let name = app.localizedName?.lowercased(), appsToBlock.contains(name) {
-                app.terminate() // On ferme l'application
-            }
+        // 2. Sauvegarde du temps par commentaire (S'il n'est pas vide)
+        let comment = currentComment.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !comment.isEmpty {
+            let currentCommentTotal = appData.focusTimePerComment[comment] ?? 0.0
+            appData.focusTimePerComment[comment] = currentCommentTotal + 1.0
         }
     }
 }
 
-// Sous-composant pour le graphique de focus
+// MARK: - GRAPHIQUE 7 JOURS FOCUS
 struct FocusTimeChart: View {
     @ObservedObject var appData: AppData
+    @State private var hoveredDate: String?
     
     var body: some View {
         let last7Days = getLast7DaysStrings()
         
-        Chart {
-            ForEach(last7Days, id: \.self) { dateStr in
-                let seconds = appData.dailyFocusTime[dateStr] ?? 0.0
-                let hours = seconds / 3600.0 // On convertit en heures pour l'affichage
-                
-                BarMark(
-                    x: .value("Date", formatShortDate(dateStr)),
-                    y: .value("Heures", hours)
-                )
-                .foregroundStyle(Color.red.gradient)
-                .annotation(position: .top) {
-                    if hours > 0 {
-                        Text(String(format: "%.1fh", hours)).font(.caption2).foregroundColor(.secondary)
-                    }
+        // Stabilisation de l'axe Y : On calcule le max arrondi à l'heure supérieure pour éviter que ça sautille
+        let maxSeconds = last7Days.map { appData.dailyFocusTime[$0] ?? 0.0 }.max() ?? 0.0
+        let maxHours = maxSeconds / 3600.0
+        let yAxisBound = max(1.0, ceil(maxHours) + 1.0)
+        
+        VStack {
+            if let h = hoveredDate, let sec = appData.dailyFocusTime[h] {
+                Text("\(formatShortDate(h)) : \(formatSecondsToHHMMSS(sec))").font(.caption).bold().foregroundColor(.red)
+            } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
+            
+            Chart {
+                ForEach(last7Days, id: \.self) { dateStr in
+                    let seconds = appData.dailyFocusTime[dateStr] ?? 0.0
+                    let hours = seconds / 3600.0
+                    
+                    BarMark(
+                        x: .value("Date", formatShortDate(dateStr)),
+                        y: .value("Heures", hours)
+                    )
+                    .foregroundStyle(Color.red.gradient)
+                    .opacity(hoveredDate == nil || hoveredDate == dateStr ? 1.0 : 0.4)
                 }
             }
-        }
-        .chartYAxis {
-            AxisMarks(position: .leading) { value in
-                AxisGridLine()
-                AxisValueLabel {
-                    if let doubleVal = value.as(Double.self) {
-                        Text("\(Int(doubleVal))h")
-                    }
+            .chartXSelection(value: $hoveredDate)
+            .chartYScale(domain: 0...yAxisBound) // L'échelle ne change qu'une fois par heure max
+            .chartYAxis {
+                AxisMarks(position: .leading) { value in
+                    AxisGridLine()
+                    AxisValueLabel { if let doubleVal = value.as(Double.self) { Text("\(Int(doubleVal))h") } }
                 }
             }
         }
@@ -720,6 +428,120 @@ struct FocusTimeChart: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "dd/MM"
         return formatter.string(from: d)
+    }
+}
+
+// MARK: - GRAPHIQUE TEMPS PAR COMMENTAIRE
+struct FocusCommentsChart: View {
+    @ObservedObject var appData: AppData
+    @State private var hoveredComment: String?
+    
+    var body: some View {
+        let data = appData.focusTimePerComment.map { (comment: $0.key, seconds: $0.value) }.sorted(by: { $0.seconds > $1.seconds })
+        
+        VStack {
+            if data.isEmpty {
+                Text("Aucun temps enregistré avec un commentaire.").foregroundColor(.secondary)
+            } else {
+                if let h = hoveredComment, let sec = appData.focusTimePerComment[h] {
+                    Text("\(h) : \(formatSecondsToHHMMSS(sec))").font(.caption).bold().foregroundColor(.orange)
+                } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
+                
+                Chart {
+                    ForEach(data, id: \.comment) { item in
+                        BarMark(
+                            x: .value("Commentaire", item.comment),
+                            y: .value("Heures", item.seconds / 3600.0)
+                        )
+                        .foregroundStyle(Color.orange.gradient)
+                        .opacity(hoveredComment == nil || hoveredComment == item.comment ? 1.0 : 0.4)
+                    }
+                }
+                .chartXSelection(value: $hoveredComment)
+                .chartYAxis {
+                    AxisMarks(position: .leading) { value in
+                        AxisGridLine()
+                        AxisValueLabel { if let doubleVal = value.as(Double.self) { Text("\(Int(doubleVal))h") } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Utilitaire global pour formater les secondes en texte
+func formatSecondsToHHMMSS(_ seconds: Double) -> String {
+    let intSec = Int(seconds)
+    let h = intSec / 3600
+    let m = (intSec % 3600) / 60
+    let s = intSec % 60
+    if h > 0 { return String(format: "%dh %02dm %02ds", h, m, s) }
+    else if m > 0 { return String(format: "%dm %02ds", m, s) }
+    else { return String(format: "%ds", s) }
+}
+
+// MARK: - CALENDRIER FOCUS
+struct FocusMonthCalendarView: View {
+    @ObservedObject var appData: AppData
+    let year: Int; let month: Int
+    let daysOfWeek = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text("\(monthName(month)) \(String(year))").font(.title3).bold().padding(.top)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 7), spacing: 5) {
+                ForEach(daysOfWeek, id: \.self) { d in Text(d).font(.caption).bold().frame(maxWidth: .infinity, alignment: .center) }
+                let days = getDaysArray()
+                ForEach(0..<days.count, id: \.self) { i in
+                    if let dayNum = days[i] {
+                        FocusCalendarCell(appData: appData, dayNum: dayNum, dateStr: String(format: "%04d-%02d-%02d", year, month, dayNum))
+                    } else { Color.clear.frame(maxWidth: .infinity, minHeight: 60) }
+                }
+            }
+        }
+    }
+    func getDaysArray() -> [Int?] { var days: [Int?] = []; let components = DateComponents(year: year, month: month, day: 1); guard let firstOfMonth = Calendar.current.date(from: components) else { return [] }; let range = Calendar.current.range(of: .day, in: .month, for: firstOfMonth)!; let numDays = range.count; var firstWeekday = Calendar.current.component(.weekday, from: firstOfMonth); firstWeekday = firstWeekday == 1 ? 7 : firstWeekday - 1; for _ in 1..<firstWeekday { days.append(nil) }; for d in 1...numDays { days.append(d) }; return days }
+    func monthName(_ m: Int) -> String { let formatter = DateFormatter(); formatter.locale = Locale(identifier: "fr_FR"); return formatter.monthSymbols[m - 1].capitalized }
+}
+
+struct FocusCalendarCell: View {
+    @ObservedObject var appData: AppData
+    let dayNum: Int; let dateStr: String
+    var body: some View {
+        let isToday = dateStr == DateFormatter.yyyyMMdd.string(from: Date())
+        let seconds = appData.dailyFocusTime[dateStr] ?? 0.0
+        
+        VStack(alignment: .trailing, spacing: 2) {
+            Text("\(dayNum)").font(.caption).bold().foregroundColor(isToday ? .white : .primary).padding(4).background(isToday ? Color.red : Color.clear).clipShape(Circle()).padding([.top, .trailing], 2)
+            Spacer()
+            if seconds > 0 {
+                Text(formatSecondsToHHMMSS(seconds))
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.blue)
+                    .padding(.bottom, 4)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .topTrailing)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(6)
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(isToday ? Color.red.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: isToday ? 2 : 1))
+    }
+}
+
+// MARK: - MODAL DE ZOOM POUR LE FOCUS
+struct FocusZoomModalView: View {
+    @Environment(\.dismiss) var dismiss
+    @ObservedObject var appData: AppData
+    let zoomType: FocusZoomType
+    var body: some View {
+        VStack {
+            HStack { Spacer(); Button("Fermer la vue") { dismiss() }.buttonStyle(.borderedProminent) }.padding(.bottom, 10)
+            switch zoomType {
+            case .chart7Days: Text("Focus des 7 derniers jours").font(.title).bold(); FocusTimeChart(appData: appData).padding()
+            case .chartComments: Text("Temps de travail par Tag / Commentaire").font(.title).bold(); FocusCommentsChart(appData: appData).padding()
+            }
+            Spacer()
+        }.padding().frame(minWidth: 800, minHeight: 600)
     }
 }
 
@@ -1494,7 +1316,7 @@ struct SessionBarChart: View {
     }
 }
 
-// MARK: - MODALS DE ZOOM (LOUPE)
+// MARK: - MODALS DE ZOOM
 struct ProgramZoomModalView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var appData: AppData
