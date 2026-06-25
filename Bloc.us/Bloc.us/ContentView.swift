@@ -3,6 +3,7 @@ import Charts
 import Foundation
 import Combine
 import UserNotifications
+import AppKit // Nécessaire pour NSWorkspace et autres spécificités Mac
 
 // MARK: - FORMATTER PERSONNALISÉ
 extension NumberFormatter {
@@ -16,7 +17,7 @@ extension NumberFormatter {
     }
 }
 
-// MARK: - GESTIONNAIRE DE COULEURS POUR CATEGORIES
+// MARK: - GESTIONNAIRE DE COULEURS POUR CATEGORIES ET TAGS
 struct CategoryColorManager {
     static var colorMap: [String: Color] = [:]
     static var currentIndex = 0
@@ -40,7 +41,7 @@ struct CategoryColorManager {
     }
 }
 
-// MARK: - EXTENSIONS COULEURS
+// MARK: - EXTENSIONS
 extension String { func categoryColor() -> Color { return CategoryColorManager.color(for: self) } }
 
 extension Color {
@@ -96,7 +97,7 @@ enum ProgramZoomType: String, Identifiable { case tableQ1, tableQ2, chartNotes, 
 enum YearZoomType: String, Identifiable { case examsJan, examsJun, examsAug, chartJan, chartJun, chartAug; var id: String { self.rawValue } }
 enum GeneralZoomType: String, Identifiable { case equilibre, repartition, points; var id: String { self.rawValue } }
 enum DashboardZoomType: String, Identifiable { case chartEvolution, chartGlobalCat, chartHistogram, chartSessions, chartCreditsYear, chartGradeCategory; var id: String { self.rawValue } }
-enum FocusZoomType: String, Identifiable { case chart7Days, chartComments; var id: String { self.rawValue } }
+enum FocusZoomType: String, Identifiable { case chart7Days, chartComments, chartTodayPie, chartWeekday; var id: String { self.rawValue } }
 
 // MARK: - VIEW MODEL (AppData)
 class AppData: ObservableObject {
@@ -105,12 +106,12 @@ class AppData: ObservableObject {
     @Published var degreePrograms: [DegreeProgram] = [] { didSet { save() } }
     @Published var academicYearsTimeline: [AcademicYearTimeline] = [] { didSet { save() } }
     
-    // Temps de focus
-    @Published var dailyFocusTime: [String: Double] = [:] { didSet { save() } }
-    @Published var focusTimePerComment: [String: Double] = [:] { didSet { save() } } // NOUVEAU: Temps par commentaire
+    // NOUVEAU: Focus stocké par jour puis par Tag. Ex: ["2026-06-25": ["LINFO2365": 3600.0, "Sans tag": 1200.0]]
+    @Published var dailyFocusDetails: [String: [String: Double]] = [:] { didSet { save() } }
     
     init() {
         load()
+        cleanOldFocusData()
         requestNotificationPermission()
     }
     
@@ -119,8 +120,7 @@ class AppData: ObservableObject {
         if let encodedSchedule = try? JSONEncoder().encode(schedule) { UserDefaults.standard.set(encodedSchedule, forKey: "schedule") }
         if let encodedPrograms = try? JSONEncoder().encode(degreePrograms) { UserDefaults.standard.set(encodedPrograms, forKey: "degreePrograms") }
         if let encodedTimelines = try? JSONEncoder().encode(academicYearsTimeline) { UserDefaults.standard.set(encodedTimelines, forKey: "academicYearsTimeline") }
-        if let encodedFocus = try? JSONEncoder().encode(dailyFocusTime) { UserDefaults.standard.set(encodedFocus, forKey: "dailyFocusTime") }
-        if let encodedFocusComments = try? JSONEncoder().encode(focusTimePerComment) { UserDefaults.standard.set(encodedFocusComments, forKey: "focusTimePerComment") }
+        if let encodedFocus = try? JSONEncoder().encode(dailyFocusDetails) { UserDefaults.standard.set(encodedFocus, forKey: "dailyFocusDetails") }
         updateNotifications()
     }
     
@@ -129,15 +129,29 @@ class AppData: ObservableObject {
         let rawSchedule = UserDefaults.standard.data(forKey: "schedule")
         let rawPrograms = UserDefaults.standard.data(forKey: "degreePrograms")
         let rawTimelines = UserDefaults.standard.data(forKey: "academicYearsTimeline")
-        let rawFocus = UserDefaults.standard.data(forKey: "dailyFocusTime")
-        let rawFocusComments = UserDefaults.standard.data(forKey: "focusTimePerComment")
+        let rawFocus = UserDefaults.standard.data(forKey: "dailyFocusDetails")
         
         if let data = rawCourses, let decoded = try? JSONDecoder().decode([String: Course].self, from: data) { self.courses = decoded }
         if let data = rawSchedule, let decoded = try? JSONDecoder().decode([String: [CourseEvent]].self, from: data) { self.schedule = decoded }
         if let data = rawPrograms, let decoded = try? JSONDecoder().decode([DegreeProgram].self, from: data) { self.degreePrograms = decoded }
         if let data = rawTimelines, let decoded = try? JSONDecoder().decode([AcademicYearTimeline].self, from: data) { self.academicYearsTimeline = decoded }
-        if let data = rawFocus, let decoded = try? JSONDecoder().decode([String: Double].self, from: data) { self.dailyFocusTime = decoded }
-        if let data = rawFocusComments, let decoded = try? JSONDecoder().decode([String: Double].self, from: data) { self.focusTimePerComment = decoded }
+        if let data = rawFocus, let decoded = try? JSONDecoder().decode([String: [String: Double]].self, from: data) {
+            self.dailyFocusDetails = decoded
+        } else {
+            // Migration depuis l'ancien système si nécessaire
+            if let oldData = UserDefaults.standard.data(forKey: "dailyFocusTime"), let decoded = try? JSONDecoder().decode([String: Double].self, from: oldData) {
+                for (date, sec) in decoded { self.dailyFocusDetails[date] = ["Sans tag": sec] }
+            }
+        }
+    }
+    
+    // Efface les données de plus de 2 mois pour ne pas surcharger
+    private func cleanOldFocusData() {
+        let cal = Calendar.current
+        if let twoMonthsAgo = cal.date(byAdding: .month, value: -2, to: Date()) {
+            let cutoffStr = DateFormatter.yyyyMMdd.string(from: twoMonthsAgo)
+            dailyFocusDetails = dailyFocusDetails.filter { $0.key >= cutoffStr }
+        }
     }
     
     func allParcoursCourses() -> [ParcoursCourse] { var uniqueCourses: [String: ParcoursCourse] = [:]; for prog in degreePrograms { for course in prog.courses { uniqueCourses[course.code] = course } }; return Array(uniqueCourses.values).sorted(by: { $0.code < $1.code }) }
@@ -210,12 +224,11 @@ struct FocusView: View {
     @ObservedObject var appData: AppData
     
     @State private var isRunning = false
-    @State private var timeElapsed: Int = 0 // Temps de la session en cours
-    @State private var currentComment: String = "" // Commentaire de la session
+    @State private var timeElapsed: Int = 0
+    @State private var currentComment: String = ""
     @State private var timer: Timer?
     @State private var zoomedItem: FocusZoomType?
     
-    // Format HH:MM:SS
     var formattedTime: String {
         let h = timeElapsed / 3600
         let m = (timeElapsed % 3600) / 60
@@ -231,7 +244,7 @@ struct FocusView: View {
                 
                 // --- ZONE DU CHRONOMÈTRE ---
                 VStack(spacing: 20) {
-                    TextField("Sujet / Commentaire de la session (ex: LINFO2365)...", text: $currentComment)
+                    TextField("Sujet / Tag de la session (ex: LINFO2365)...", text: $currentComment)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 400)
                         .disabled(isRunning)
@@ -262,7 +275,7 @@ struct FocusView: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(.plain)
-                        .disabled(isRunning) // On évite de réinitialiser pendant que ça tourne
+                        .disabled(isRunning)
                         .opacity(isRunning ? 0.5 : 1.0)
                     }
                 }
@@ -273,51 +286,48 @@ struct FocusView: View {
                 
                 Divider()
                 
-                // --- ZONE DES GRAPHIQUES ---
+                // --- ZONE DES GRAPHIQUES GLOBAUX ---
                 HStack(alignment: .top, spacing: 20) {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("📊 Focus (7 derniers jours)").font(.title2).bold()
-                            Spacer()
-                            Button(action: { zoomedItem = .chart7Days }) { Image(systemName: "plus.magnifyingglass") }
-                        }
+                        HStack { Text("📊 Focus (7 derniers jours)").font(.title2).bold(); Spacer(); Button(action: { zoomedItem = .chart7Days }) { Image(systemName: "plus.magnifyingglass") } }
                         FocusTimeChart(appData: appData).frame(height: 250)
-                    }
-                    .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(15)
+                    }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(15)
                     
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("🏷️ Temps par commentaire").font(.title2).bold()
-                            Spacer()
-                            Button(action: { zoomedItem = .chartComments }) { Image(systemName: "plus.magnifyingglass") }
-                        }
+                        HStack { Text("🏷️ Temps par Tag (Global)").font(.title2).bold(); Spacer(); Button(action: { zoomedItem = .chartComments }) { Image(systemName: "plus.magnifyingglass") } }
                         FocusCommentsChart(appData: appData).frame(height: 250)
-                    }
-                    .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(15)
+                    }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(15)
+                }
+                
+                // --- NOUVEAUX GRAPHIQUES ---
+                HStack(alignment: .top, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack { Text("🥧 Répartition du jour").font(.title2).bold(); Spacer(); Button(action: { zoomedItem = .chartTodayPie }) { Image(systemName: "plus.magnifyingglass") } }
+                        FocusTodayPieChart(appData: appData).frame(height: 250)
+                    }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(15)
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack { Text("📅 Productivité par Jour").font(.title2).bold(); Spacer(); Button(action: { zoomedItem = .chartWeekday }) { Image(systemName: "plus.magnifyingglass") } }
+                        FocusWeekdayChart(appData: appData).frame(height: 250)
+                    }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(15)
                 }
                 
                 Divider()
                 
-                // --- ZONE CALENDRIER DE FOCUS (2 MOIS) ---
+                // --- ZONE CALENDRIER DE FOCUS ---
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("🗓️ Historique Complet").font(.title2).bold()
-                    let today = Date()
-                    let cal = Calendar.current
-                    let currentMonth = cal.component(.month, from: today)
-                    let currentYear = cal.component(.year, from: today)
-                    
-                    let prevMonthDate = cal.date(byAdding: .month, value: -1, to: today)!
-                    let prevMonth = cal.component(.month, from: prevMonthDate)
-                    let prevYear = cal.component(.year, from: prevMonthDate)
+                    Text("🗓️ Historique (2 derniers mois)").font(.title2).bold()
+                    let today = Date(); let cal = Calendar.current; let currentMonth = cal.component(.month, from: today); let currentYear = cal.component(.year, from: today)
+                    let prevMonthDate = cal.date(byAdding: .month, value: -1, to: today)!; let prevMonth = cal.component(.month, from: prevMonthDate); let prevYear = cal.component(.year, from: prevMonthDate)
                     
                     HStack(alignment: .top, spacing: 20) {
                         FocusMonthCalendarView(appData: appData, year: prevYear, month: prevMonth)
                         FocusMonthCalendarView(appData: appData, year: currentYear, month: currentMonth)
                     }
+                    
+                    // NOUVEAU: CALCULATEUR
+                    FocusCalculatorView(appData: appData)
+                        .padding(.top, 10)
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
@@ -325,76 +335,135 @@ struct FocusView: View {
                 
             }.padding()
         }
-        .onDisappear {
-            stopTimer() // Sécurité
-        }
+        .onDisappear { stopTimer() }
         .sheet(item: $zoomedItem) { zItem in FocusZoomModalView(appData: appData, zoomType: zItem) }
     }
     
-    private func toggleTimer() {
-        if isRunning { stopTimer() }
-        else { startTimer() }
-    }
-    
-    private func startTimer() {
-        isRunning = true
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            timerTick()
-        }
-    }
-    
-    private func stopTimer() {
-        isRunning = false
-        timer?.invalidate()
-        timer = nil
-    }
-    
-    private func resetSessionTimer() {
-        timeElapsed = 0 // Réinitialise juste la vue de la session actuelle, les données accumulées en fond restent !
-    }
+    private func toggleTimer() { if isRunning { stopTimer() } else { startTimer() } }
+    private func startTimer() { isRunning = true; timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in timerTick() } }
+    private func stopTimer() { isRunning = false; timer?.invalidate(); timer = nil }
+    private func resetSessionTimer() { timeElapsed = 0 }
     
     private func timerTick() {
         timeElapsed += 1
-        
-        // 1. Sauvegarde du temps total quotidien
         let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
-        let currentTotal = appData.dailyFocusTime[todayStr] ?? 0.0
-        appData.dailyFocusTime[todayStr] = currentTotal + 1.0
+        var dayData = appData.dailyFocusDetails[todayStr] ?? [:]
+        let tag = currentComment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeTag = tag.isEmpty ? "Sans tag" : tag
         
-        // 2. Sauvegarde du temps par commentaire (S'il n'est pas vide)
-        let comment = currentComment.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !comment.isEmpty {
-            let currentCommentTotal = appData.focusTimePerComment[comment] ?? 0.0
-            appData.focusTimePerComment[comment] = currentCommentTotal + 1.0
-        }
+        dayData[safeTag, default: 0.0] += 1.0
+        appData.dailyFocusDetails[todayStr] = dayData
     }
 }
 
-// MARK: - GRAPHIQUE 7 JOURS FOCUS
+// MARK: - COMPOSANT CALCULATEUR DE TEMPS (NOUVEAU)
+struct FocusCalculatorView: View {
+    @ObservedObject var appData: AppData
+    @State private var startDate: Date
+    @State private var endDate: Date
+    @State private var selectedTags: Set<String> = []
+    
+    init(appData: AppData) {
+        self.appData = appData
+        let cal = Calendar.current
+        _startDate = State(initialValue: cal.date(byAdding: .day, value: -7, to: Date()) ?? Date())
+        _endDate = State(initialValue: Date())
+    }
+    
+    var allTags: [String] {
+        return Array(Set(appData.dailyFocusDetails.values.flatMap { $0.keys })).sorted()
+    }
+    
+    var totalSeconds: Double {
+        var total: Double = 0
+        let startStr = DateFormatter.yyyyMMdd.string(from: startDate)
+        let endStr = DateFormatter.yyyyMMdd.string(from: endDate)
+        
+        for (dateStr, tagsDict) in appData.dailyFocusDetails {
+            if dateStr >= startStr && dateStr <= endStr {
+                for (tag, time) in tagsDict {
+                    if selectedTags.isEmpty || selectedTags.contains(tag) { // Si vide = tout sélectionné par défaut
+                        total += time
+                    }
+                }
+            }
+        }
+        return total
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            Text("⏱️ Calculateur de temps de travail").font(.headline)
+            
+            let twoMonthsAgo = Calendar.current.date(byAdding: .month, value: -2, to: Date())!
+            
+            HStack(spacing: 20) {
+                DatePicker("Du", selection: $startDate, in: twoMonthsAgo...Date(), displayedComponents: .date)
+                DatePicker("Au", selection: $endDate, in: twoMonthsAgo...Date(), displayedComponents: .date)
+            }
+            
+            VStack(alignment: .leading) {
+                Text("Filtrer par Tags (Tous sélectionnés si vide) :").font(.caption).foregroundColor(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(allTags, id: \.self) { tag in
+                            let isSelected = selectedTags.contains(tag)
+                            Button(action: {
+                                if isSelected { selectedTags.remove(tag) } else { selectedTags.insert(tag) }
+                            }) {
+                                Text(tag)
+                                    .font(.caption)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(isSelected ? Color.blue : Color.gray.opacity(0.3))
+                                    .foregroundColor(isSelected ? .white : .primary)
+                                    .cornerRadius(10)
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            
+            HStack {
+                Text("Total travaillé :")
+                Text(formatSecondsToHHMMSS(totalSeconds))
+                    .font(.title2).bold().foregroundColor(.green)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.green.opacity(0.1))
+            .cornerRadius(8)
+        }
+        .padding()
+        .background(Color(NSColor.windowBackgroundColor))
+        .cornerRadius(10)
+    }
+}
+
+// MARK: - GRAPHIQUES FOCUS
 struct FocusTimeChart: View {
     @ObservedObject var appData: AppData
     @State private var hoveredDate: String?
     
     var body: some View {
         let last7Days = getLast7DaysStrings()
-        
-        // Stabilisation de l'axe Y : On calcule le max arrondi à l'heure supérieure pour éviter que ça sautille
-        let maxSeconds = last7Days.map { appData.dailyFocusTime[$0] ?? 0.0 }.max() ?? 0.0
+        let maxSeconds = last7Days.map { dStr in (appData.dailyFocusDetails[dStr] ?? [:]).values.reduce(0, +) }.max() ?? 0.0
         let maxHours = maxSeconds / 3600.0
-        let yAxisBound = max(1.0, ceil(maxHours) + 1.0)
+        let yAxisBound = max(1.0, ceil(maxHours) + 1.0) // Stabilise l'axe Y
         
         VStack {
-            if let h = hoveredDate, let sec = appData.dailyFocusTime[h] {
+            if let h = hoveredDate, let dict = appData.dailyFocusDetails[h] {
+                let sec = dict.values.reduce(0, +)
                 Text("\(formatShortDate(h)) : \(formatSecondsToHHMMSS(sec))").font(.caption).bold().foregroundColor(.red)
             } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
             
             Chart {
                 ForEach(last7Days, id: \.self) { dateStr in
-                    let seconds = appData.dailyFocusTime[dateStr] ?? 0.0
+                    let seconds = (appData.dailyFocusDetails[dateStr] ?? [:]).values.reduce(0, +)
                     let hours = seconds / 3600.0
                     
                     BarMark(
-                        x: .value("Date", formatShortDate(dateStr)),
+                        x: .value("Date", dateStr), // Utilise la vraie string pour que la sélection match parfaitement
                         y: .value("Heures", hours)
                     )
                     .foregroundStyle(Color.red.gradient)
@@ -402,7 +471,12 @@ struct FocusTimeChart: View {
                 }
             }
             .chartXSelection(value: $hoveredDate)
-            .chartYScale(domain: 0...yAxisBound) // L'échelle ne change qu'une fois par heure max
+            .chartYScale(domain: 0...yAxisBound)
+            .chartXAxis {
+                AxisMarks { value in
+                    if let str = value.as(String.self) { AxisValueLabel { Text(formatShortDate(str)) } }
+                }
+            }
             .chartYAxis {
                 AxisMarks(position: .leading) { value in
                     AxisGridLine()
@@ -413,48 +487,39 @@ struct FocusTimeChart: View {
     }
     
     private func getLast7DaysStrings() -> [String] {
-        var dates: [String] = []
-        let today = Date()
-        for i in (0..<7).reversed() {
-            if let d = Calendar.current.date(byAdding: .day, value: -i, to: today) {
-                dates.append(DateFormatter.yyyyMMdd.string(from: d))
-            }
-        }
+        var dates: [String] = []; let today = Date()
+        for i in (0..<7).reversed() { if let d = Calendar.current.date(byAdding: .day, value: -i, to: today) { dates.append(DateFormatter.yyyyMMdd.string(from: d)) } }
         return dates
     }
-    
     private func formatShortDate(_ str: String) -> String {
         guard let d = DateFormatter.yyyyMMdd.date(from: str) else { return str }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "dd/MM"
-        return formatter.string(from: d)
+        let formatter = DateFormatter(); formatter.dateFormat = "dd/MM"; return formatter.string(from: d)
     }
 }
 
-// MARK: - GRAPHIQUE TEMPS PAR COMMENTAIRE
 struct FocusCommentsChart: View {
     @ObservedObject var appData: AppData
     @State private var hoveredComment: String?
     
     var body: some View {
-        let data = appData.focusTimePerComment.map { (comment: $0.key, seconds: $0.value) }.sorted(by: { $0.seconds > $1.seconds })
+        // Aggrégation globale par tag
+        var tagTotals: [String: Double] = [:]
+        for (_, tagsDict) in appData.dailyFocusDetails {
+            for (tag, sec) in tagsDict { tagTotals[tag, default: 0] += sec }
+        }
+        let data = tagTotals.map { (comment: $0.key, seconds: $0.value) }.sorted(by: { $0.seconds > $1.seconds })
         
-        VStack {
-            if data.isEmpty {
-                Text("Aucun temps enregistré avec un commentaire.").foregroundColor(.secondary)
-            } else {
-                if let h = hoveredComment, let sec = appData.focusTimePerComment[h] {
+        return VStack {
+            if data.isEmpty { Text("Aucun temps enregistré.").foregroundColor(.secondary) } else {
+                if let h = hoveredComment, let sec = tagTotals[h] {
                     Text("\(h) : \(formatSecondsToHHMMSS(sec))").font(.caption).bold().foregroundColor(.orange)
                 } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
                 
                 Chart {
                     ForEach(data, id: \.comment) { item in
-                        BarMark(
-                            x: .value("Commentaire", item.comment),
-                            y: .value("Heures", item.seconds / 3600.0)
-                        )
-                        .foregroundStyle(Color.orange.gradient)
-                        .opacity(hoveredComment == nil || hoveredComment == item.comment ? 1.0 : 0.4)
+                        BarMark(x: .value("Tag", item.comment), y: .value("Heures", item.seconds / 3600.0))
+                            .foregroundStyle(item.comment.categoryColor().gradient)
+                            .opacity(hoveredComment == nil || hoveredComment == item.comment ? 1.0 : 0.4)
                     }
                 }
                 .chartXSelection(value: $hoveredComment)
@@ -469,21 +534,104 @@ struct FocusCommentsChart: View {
     }
 }
 
-// Utilitaire global pour formater les secondes en texte
+// NOUVEAU: Graphique Camembert pour le jour actuel
+struct FocusTodayPieChart: View {
+    @ObservedObject var appData: AppData
+    @State private var hoveredTag: String?
+    
+    var body: some View {
+        Group {
+            if #available(macOS 14.0, *) {
+                let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
+                let todayData = appData.dailyFocusDetails[todayStr] ?? [:]
+                let data = todayData.map { (tag: $0.key, sec: $0.value) }.sorted(by: { $0.sec > $1.sec })
+                
+                VStack {
+                    if data.isEmpty { Text("Rien enregistré aujourd'hui.").foregroundColor(.secondary) } else {
+                        if let h = hoveredTag, let sec = todayData[h] {
+                            Text("\(h) : \(formatSecondsToHHMMSS(sec))").font(.caption).bold().foregroundColor(.blue)
+                        } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
+                        
+                        Chart {
+                            ForEach(data, id: \.tag) { item in
+                                SectorMark(angle: .value("Temps", item.sec), innerRadius: .ratio(0.5), angularInset: 1.5)
+                                    .foregroundStyle(item.tag.categoryColor())
+                            }
+                        }
+                        .chartAngleSelection(value: Binding<Double?>(
+                            get: {
+                                guard let h = hoveredTag else { return nil }
+                                var cumulative: Double = 0
+                                for item in data {
+                                    cumulative += item.sec
+                                    if item.tag == h { return cumulative - (item.sec/2) }
+                                }
+                                return nil
+                            },
+                            set: { angle in
+                                if let angle = angle {
+                                    var sum: Double = 0
+                                    for item in data {
+                                        sum += item.sec
+                                        if angle <= sum { hoveredTag = item.tag; return }
+                                    }
+                                } else {
+                                    hoveredTag = nil
+                                }
+                            }
+                        ))
+                    }
+                }
+            } else { Text("Nécessite macOS 14+") }
+        }
+    }
+}
+
+// NOUVEAU: Moyenne par jour de la semaine
+struct FocusWeekdayChart: View {
+    @ObservedObject var appData: AppData
+    @State private var hoveredDay: String?
+    
+    var body: some View {
+        let weekdays = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"]
+        var dayTotals = Array(repeating: 0.0, count: 7)
+        let cal = Calendar.current
+        
+        for (dateStr, dict) in appData.dailyFocusDetails {
+            if let d = DateFormatter.yyyyMMdd.date(from: dateStr) {
+                let weekday = cal.component(.weekday, from: d) // 1 = Dimanche
+                dayTotals[weekday - 1] += dict.values.reduce(0, +)
+            }
+        }
+        
+        let data = (0..<7).map { (day: weekdays[$0], sec: dayTotals[$0]) }
+        // On réorganise pour commencer au Lundi (index 1 à 6, puis 0)
+        let orderedData = Array(data[1...6]) + [data[0]]
+        
+        return VStack {
+            if let h = hoveredDay, let item = orderedData.first(where: { $0.day == h }) {
+                Text("\(h) : Total de \(formatSecondsToHHMMSS(item.sec))").font(.caption).bold().foregroundColor(.purple)
+            } else { Text("Survolez pour le détail").font(.caption).foregroundColor(.secondary) }
+            
+            Chart {
+                ForEach(orderedData, id: \.day) { item in
+                    BarMark(x: .value("Jour", item.day), y: .value("Heures", item.sec / 3600.0))
+                        .foregroundStyle(Color.purple.gradient)
+                        .opacity(hoveredDay == nil || hoveredDay == item.day ? 1.0 : 0.4)
+                }
+            }.chartXSelection(value: $hoveredDay)
+        }
+    }
+}
+
 func formatSecondsToHHMMSS(_ seconds: Double) -> String {
-    let intSec = Int(seconds)
-    let h = intSec / 3600
-    let m = (intSec % 3600) / 60
-    let s = intSec % 60
-    if h > 0 { return String(format: "%dh %02dm %02ds", h, m, s) }
-    else if m > 0 { return String(format: "%dm %02ds", m, s) }
-    else { return String(format: "%ds", s) }
+    let intSec = Int(seconds); let h = intSec / 3600; let m = (intSec % 3600) / 60; let s = intSec % 60
+    if h > 0 { return String(format: "%dh %02dm %02ds", h, m, s) } else if m > 0 { return String(format: "%dm %02ds", m, s) } else { return String(format: "%ds", s) }
 }
 
 // MARK: - CALENDRIER FOCUS
 struct FocusMonthCalendarView: View {
-    @ObservedObject var appData: AppData
-    let year: Int; let month: Int
+    @ObservedObject var appData: AppData; let year: Int; let month: Int
     let daysOfWeek = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
     var body: some View {
         VStack(alignment: .leading) {
@@ -492,9 +640,8 @@ struct FocusMonthCalendarView: View {
                 ForEach(daysOfWeek, id: \.self) { d in Text(d).font(.caption).bold().frame(maxWidth: .infinity, alignment: .center) }
                 let days = getDaysArray()
                 ForEach(0..<days.count, id: \.self) { i in
-                    if let dayNum = days[i] {
-                        FocusCalendarCell(appData: appData, dayNum: dayNum, dateStr: String(format: "%04d-%02d-%02d", year, month, dayNum))
-                    } else { Color.clear.frame(maxWidth: .infinity, minHeight: 60) }
+                    if let dayNum = days[i] { FocusCalendarCell(appData: appData, dayNum: dayNum, dateStr: String(format: "%04d-%02d-%02d", year, month, dayNum)) }
+                    else { Color.clear.frame(maxWidth: .infinity, minHeight: 60) }
                 }
             }
         }
@@ -504,45 +651,23 @@ struct FocusMonthCalendarView: View {
 }
 
 struct FocusCalendarCell: View {
-    @ObservedObject var appData: AppData
-    let dayNum: Int; let dateStr: String
+    @ObservedObject var appData: AppData; let dayNum: Int; let dateStr: String
     var body: some View {
         let isToday = dateStr == DateFormatter.yyyyMMdd.string(from: Date())
-        let seconds = appData.dailyFocusTime[dateStr] ?? 0.0
+        let seconds = (appData.dailyFocusDetails[dateStr] ?? [:]).values.reduce(0, +)
         
         VStack(alignment: .trailing, spacing: 2) {
             Text("\(dayNum)").font(.caption).bold().foregroundColor(isToday ? .white : .primary).padding(4).background(isToday ? Color.red : Color.clear).clipShape(Circle()).padding([.top, .trailing], 2)
             Spacer()
-            if seconds > 0 {
-                Text(formatSecondsToHHMMSS(seconds))
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.blue)
-                    .padding(.bottom, 4)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 60, alignment: .topTrailing)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(6)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(isToday ? Color.red.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: isToday ? 2 : 1))
+            if seconds > 0 { Text(formatSecondsToHHMMSS(seconds)).font(.system(size: 9, weight: .bold)).foregroundColor(.blue).padding(.bottom, 4).frame(maxWidth: .infinity, alignment: .center) }
+        }.frame(maxWidth: .infinity, minHeight: 60, alignment: .topTrailing).background(Color(NSColor.controlBackgroundColor)).cornerRadius(6).overlay(RoundedRectangle(cornerRadius: 6).stroke(isToday ? Color.red.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: isToday ? 2 : 1))
     }
 }
 
 // MARK: - MODAL DE ZOOM POUR LE FOCUS
 struct FocusZoomModalView: View {
-    @Environment(\.dismiss) var dismiss
-    @ObservedObject var appData: AppData
-    let zoomType: FocusZoomType
-    var body: some View {
-        VStack {
-            HStack { Spacer(); Button("Fermer la vue") { dismiss() }.buttonStyle(.borderedProminent) }.padding(.bottom, 10)
-            switch zoomType {
-            case .chart7Days: Text("Focus des 7 derniers jours").font(.title).bold(); FocusTimeChart(appData: appData).padding()
-            case .chartComments: Text("Temps de travail par Tag / Commentaire").font(.title).bold(); FocusCommentsChart(appData: appData).padding()
-            }
-            Spacer()
-        }.padding().frame(minWidth: 800, minHeight: 600)
-    }
+    @Environment(\.dismiss) var dismiss; @ObservedObject var appData: AppData; let zoomType: FocusZoomType
+    var body: some View { VStack { HStack { Spacer(); Button("Fermer la vue") { dismiss() }.buttonStyle(.borderedProminent) }.padding(.bottom, 10); switch zoomType { case .chart7Days: Text("Focus des 7 derniers jours").font(.title).bold(); FocusTimeChart(appData: appData).padding() case .chartComments: Text("Temps de travail par Tag / Commentaire").font(.title).bold(); FocusCommentsChart(appData: appData).padding() case .chartTodayPie: Text("Répartition du jour").font(.title).bold(); FocusTodayPieChart(appData: appData).padding() case .chartWeekday: Text("Productivité par Jour de la Semaine").font(.title).bold(); FocusWeekdayChart(appData: appData).padding() }; Spacer() }.padding().frame(minWidth: 800, minHeight: 600) }
 }
 
 
@@ -1817,15 +1942,34 @@ struct MenuBarView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 15) {
-                HStack { Text("🎯 Focus du jour").font(.headline); Spacer() }.padding(.bottom, 5)
-                let todayStr = DateFormatter.yyyyMMdd.string(from: Date()); let todaysEvents = appData.schedule[todayStr] ?? []
+                
+                // NOUVEAU: Focus de la journée
+                let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
+                let todayFocus = appData.dailyFocusDetails[todayStr] ?? [:]
+                if !todayFocus.isEmpty {
+                    Text("🎧 Focus du jour").font(.headline).foregroundColor(.blue)
+                    ForEach(todayFocus.keys.sorted(), id: \.self) { tag in
+                        HStack {
+                            Text(tag).font(.subheadline)
+                            Spacer()
+                            Text(formatSecondsToHHMMSS(todayFocus[tag]!)).font(.caption2).foregroundColor(.secondary)
+                        }
+                    }
+                    Divider()
+                }
+                
+                HStack { Text("🎯 Tâches du jour").font(.headline); Spacer() }.padding(.bottom, 5)
+                let todaysEvents = appData.schedule[todayStr] ?? []
                 if todaysEvents.isEmpty { Text("Rien de prévu aujourd'hui ! Profite de ton repos.").font(.subheadline).foregroundColor(.secondary) } else { ForEach(todaysEvents) { ev in if let course = appData.courses[ev.course] { VStack(alignment: .leading, spacing: 8) { HStack { Text("📚 **\(ev.course)**"); Spacer(); if let dayInfo = appData.currentStudyDayInfo(for: ev.course) { Text("Jour \(dayInfo.current)/\(dayInfo.total)").font(.caption).fontWeight(.bold).padding(.horizontal, 6).padding(.vertical, 2).background(Color(hex: course.colorHex).opacity(0.2)).foregroundColor(Color(hex: course.colorHex)).cornerRadius(4) } }; if !ev.description.isEmpty { Text("👉 \(ev.description)").font(.caption).foregroundColor(.secondary) }; CustomProgressBar(progress: appData.computeProgress(for: ev.course), color: Color(hex: course.colorHex), isMain: false); let totalPoints = course.grading.reduce(0) { $0 + $1.total }; let earnedPoints = course.grading.reduce(0) { $0 + $1.score }; let examTotal = max(0, 20 - totalPoints); let neededExam = max(0, course.passingGrade - earnedPoints); if examTotal > 0 { let percentage = (neededExam / examTotal) * 100; Text("Objectif examen : **\(String(format: "%.2f", neededExam)) / \(String(format: "%.2f", examTotal))** (\(String(format: "%.1f", percentage))%)").font(.caption2).foregroundColor(.secondary) } else { Text("🎉 Cours déjà validé !").font(.caption2).foregroundColor(.green) } }.padding(10).background(Color(NSColor.controlBackgroundColor)).cornerRadius(8) } } }
+                
                 let todaysTodos = appData.getTodaysTodos(); if !todaysTodos.isEmpty { Divider(); Text("📝 À faire aujourd'hui").font(.headline).foregroundColor(.orange); ForEach(todaysTodos, id: \.todo.id) { item in HStack { Button(action: { appData.courses[item.courseName]?.todos?[item.todoIndex].isDone.toggle() }) { Image(systemName: item.todo.isDone ? "checkmark.circle.fill" : "circle").foregroundColor(item.todo.isDone ? .green : .gray) }.buttonStyle(.plain); VStack(alignment: .leading) { Text(item.todo.text).font(.subheadline).strikethrough(item.todo.isDone); Text(item.courseName).font(.caption2).foregroundColor(Color(hex: item.colorHex)) } } } }
+                
                 Divider(); Text("📚 Progression par section").font(.headline).padding(.top, 5)
                 let grouped = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })
                 ForEach(grouped.keys.sorted(), id: \.self) { cat in Text(cat).font(.caption).foregroundColor(.secondary).padding(.top, 5); ForEach(grouped[cat]!.sorted(), id: \.self) { cName in let course = appData.courses[cName]!; HStack { Text(cName).font(.subheadline); Spacer(); Text("\(String(format: "%.2f", appData.computeProgress(for: cName) * 100)) %").font(.caption2) }; CustomProgressBar(progress: appData.computeProgress(for: cName), color: Color(hex: course.colorHex), isMain: false) } }
+                
                 Divider(); HStack { Spacer(); Button("Quitter Bloc.us") { NSApplication.shared.terminate(nil) }.buttonStyle(.plain).font(.caption).foregroundColor(.secondary) }
             }.padding()
-        }.frame(width: 330, height: 480)
+        }.frame(width: 330, height: 550)
     }
 }
