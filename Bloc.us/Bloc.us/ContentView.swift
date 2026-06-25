@@ -3,6 +3,7 @@ import Charts
 import Foundation
 import Combine
 import UserNotifications
+import AppKit // Nécessaire pour NSWorkspace et le blocage d'apps
 
 // MARK: - FORMATTER PERSONNALISÉ
 extension NumberFormatter {
@@ -188,9 +189,11 @@ enum DashboardZoomType: String, Identifiable {
 class AppData: ObservableObject {
     @Published var courses: [String: Course] = [:] { didSet { save() } }
     @Published var schedule: [String: [CourseEvent]] = [:] { didSet { save() } }
-    
     @Published var degreePrograms: [DegreeProgram] = [] { didSet { save() } }
     @Published var academicYearsTimeline: [AcademicYearTimeline] = [] { didSet { save() } }
+    
+    // NOUVEAU : Temps de focus quotidien (Clé: Date yyyy-MM-dd, Valeur: Secondes)
+    @Published var dailyFocusTime: [String: Double] = [:] { didSet { save() } }
     
     init() {
         load()
@@ -202,6 +205,7 @@ class AppData: ObservableObject {
         if let encodedSchedule = try? JSONEncoder().encode(schedule) { UserDefaults.standard.set(encodedSchedule, forKey: "schedule") }
         if let encodedPrograms = try? JSONEncoder().encode(degreePrograms) { UserDefaults.standard.set(encodedPrograms, forKey: "degreePrograms") }
         if let encodedTimelines = try? JSONEncoder().encode(academicYearsTimeline) { UserDefaults.standard.set(encodedTimelines, forKey: "academicYearsTimeline") }
+        if let encodedFocus = try? JSONEncoder().encode(dailyFocusTime) { UserDefaults.standard.set(encodedFocus, forKey: "dailyFocusTime") }
         updateNotifications()
     }
     
@@ -210,11 +214,13 @@ class AppData: ObservableObject {
         let rawSchedule = UserDefaults.standard.data(forKey: "schedule")
         let rawPrograms = UserDefaults.standard.data(forKey: "degreePrograms")
         let rawTimelines = UserDefaults.standard.data(forKey: "academicYearsTimeline")
+        let rawFocus = UserDefaults.standard.data(forKey: "dailyFocusTime")
         
         if let data = rawCourses, let decoded = try? JSONDecoder().decode([String: Course].self, from: data) { self.courses = decoded }
         if let data = rawSchedule, let decoded = try? JSONDecoder().decode([String: [CourseEvent]].self, from: data) { self.schedule = decoded }
         if let data = rawPrograms, let decoded = try? JSONDecoder().decode([DegreeProgram].self, from: data) { self.degreePrograms = decoded }
         if let data = rawTimelines, let decoded = try? JSONDecoder().decode([AcademicYearTimeline].self, from: data) { self.academicYearsTimeline = decoded }
+        if let data = rawFocus, let decoded = try? JSONDecoder().decode([String: Double].self, from: data) { self.dailyFocusTime = decoded }
     }
     
     func allParcoursCourses() -> [ParcoursCourse] {
@@ -453,6 +459,7 @@ struct ContentView: View {
                     NavigationLink("📊 Général", value: "Général")
                     NavigationLink("📅 Planning", value: "Planning")
                     NavigationLink("🎓 Parcours", value: "Parcours")
+                    NavigationLink("🎧 Focus", value: "Focus") // NOUVEL ONGLET ICI
                 }
                 let groupedCourses = Dictionary(grouping: appData.courses.keys, by: { appData.courses[$0]?.category ?? "Général" })
                 ForEach(groupedCourses.keys.sorted(), id: \.self) { category in
@@ -465,6 +472,7 @@ struct ContentView: View {
             if selection == "Général" { GeneralView(appData: appData) }
             else if selection == "Planning" { PlanningView(appData: appData) }
             else if selection == "Parcours" { ParcoursMainView(appData: appData) }
+            else if selection == "Focus" { FocusView(appData: appData) } // NOUVELLE PAGE ICI
             else if let courseName = selection, appData.courses.keys.contains(courseName) { CourseDetailView(appData: appData, courseName: courseName, selection: $selection) }
             else { Text("Sélectionne un élément dans le menu").foregroundColor(.secondary) }
         }
@@ -472,6 +480,249 @@ struct ContentView: View {
         .sheet(isPresented: $isShowingAddCourse) { AddCourseSheet(appData: appData, isPresented: $isShowingAddCourse) }
     }
 }
+
+// MARK: - VUE FOCUS 🎧 (NOUVEAU)
+struct FocusView: View {
+    @ObservedObject var appData: AppData
+    
+    @State private var isRunning = false
+    @State private var isPomodoro = true // true = Pomodoro (décompte 25 min), false = Minuteur (chronomètre classique)
+    @State private var timeRemaining: Int = 25 * 60
+    @State private var timeElapsed: Int = 0
+    
+    @State private var blockedAppsInput: String = "Discord, Messages, Safari"
+    @State private var timer: Timer?
+    @State private var secondsSinceLastSave = 0
+    
+    var formattedTime: String {
+        let totalSeconds = isPomodoro ? timeRemaining : timeElapsed
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 40) {
+                HStack { Text("🎧 Mode Focus").font(.largeTitle).bold(); Spacer() }
+                
+                HStack(alignment: .top, spacing: 30) {
+                    // ZONE GAUCHE : LE TIMER
+                    VStack(spacing: 30) {
+                        Picker("Mode", selection: $isPomodoro) {
+                            Text("Pomodoro (25min)").tag(true)
+                            Text("Minuteur classique").tag(false)
+                        }
+                        .pickerStyle(.segmented)
+                        .disabled(isRunning)
+                        .frame(width: 250)
+                        
+                        ZStack {
+                            Circle()
+                                .stroke(lineWidth: 15)
+                                .opacity(0.2)
+                                .foregroundColor(isRunning ? .red : .blue)
+                            
+                            Circle()
+                                .trim(from: 0.0, to: progressValue)
+                                .stroke(style: StrokeStyle(lineWidth: 15, lineCap: .round, lineJoin: .round))
+                                .foregroundColor(isRunning ? .red : .blue)
+                                .rotationEffect(Angle(degrees: 270.0))
+                                .animation(.linear, value: progressValue)
+                            
+                            Text(formattedTime)
+                                .font(.system(size: 60, weight: .bold, design: .monospaced))
+                        }
+                        .frame(width: 250, height: 250)
+                        
+                        HStack(spacing: 20) {
+                            Button(action: toggleTimer) {
+                                Image(systemName: isRunning ? "pause.fill" : "play.fill")
+                                    .font(.title)
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(isRunning ? Color.orange : Color.green)
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                            
+                            Button(action: resetTimer) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.title)
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(Color.gray)
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding()
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(15)
+                    
+                    // ZONE DROITE : PARAMÈTRES ET BLOCAGE
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("🚫 Bloqueur d'Applications").font(.title2).bold()
+                        Text("Ces applications se fermeront automatiquement et ne pourront pas être ouvertes tant que le mode Focus est actif.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        TextEditor(text: $blockedAppsInput)
+                            .font(.system(size: 14))
+                            .frame(height: 100)
+                            .padding(4)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(8)
+                            .disabled(isRunning)
+                        
+                        Text("Astuce : Sépare les noms par des virgules (ex: Safari, Discord)").font(.caption2).foregroundColor(.gray)
+                        
+                        Spacer()
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(15)
+                }
+                
+                Divider()
+                
+                // ZONE BAS : STATISTIQUES DU FOCUS
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("📊 Temps de Focus (7 derniers jours)").font(.title2).bold()
+                    FocusTimeChart(appData: appData).frame(height: 250)
+                }
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(15)
+                
+            }.padding()
+        }
+        .onDisappear {
+            stopTimer() // Sécurité : On arrête le timer si l'utilisateur quitte la page
+        }
+    }
+    
+    var progressValue: CGFloat {
+        if isPomodoro {
+            return CGFloat(timeRemaining) / CGFloat(25 * 60)
+        } else {
+            return 1.0 // Le chrono tourne en positif, donc le cercle reste entier.
+        }
+    }
+    
+    private func toggleTimer() {
+        if isRunning { stopTimer() }
+        else { startTimer() }
+    }
+    
+    private func startTimer() {
+        isRunning = true
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            timerTick()
+        }
+    }
+    
+    private func stopTimer() {
+        isRunning = false
+        timer?.invalidate()
+        timer = nil
+    }
+    
+    private func resetTimer() {
+        stopTimer()
+        timeRemaining = 25 * 60
+        timeElapsed = 0
+    }
+    
+    private func timerTick() {
+        // Logique de temps
+        if isPomodoro {
+            if timeRemaining > 0 { timeRemaining -= 1 }
+            else { stopTimer(); resetTimer() } // Fin du Pomodoro
+        } else {
+            timeElapsed += 1
+        }
+        
+        // Sauvegarde du temps total d'étude
+        secondsSinceLastSave += 1
+        let todayStr = DateFormatter.yyyyMMdd.string(from: Date())
+        let currentTotal = appData.dailyFocusTime[todayStr] ?? 0.0
+        appData.dailyFocusTime[todayStr] = currentTotal + 1.0
+        
+        // Blocage agressif des applications
+        enforceAppBlocking()
+    }
+    
+    private func enforceAppBlocking() {
+        // On récupère la liste des apps à bloquer en nettoyant les espaces
+        let appsToBlock = blockedAppsInput.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        
+        // On vérifie toutes les apps ouvertes sur le Mac
+        for app in NSWorkspace.shared.runningApplications {
+            if let name = app.localizedName?.lowercased(), appsToBlock.contains(name) {
+                app.terminate() // On ferme l'application
+            }
+        }
+    }
+}
+
+// Sous-composant pour le graphique de focus
+struct FocusTimeChart: View {
+    @ObservedObject var appData: AppData
+    
+    var body: some View {
+        let last7Days = getLast7DaysStrings()
+        
+        Chart {
+            ForEach(last7Days, id: \.self) { dateStr in
+                let seconds = appData.dailyFocusTime[dateStr] ?? 0.0
+                let hours = seconds / 3600.0 // On convertit en heures pour l'affichage
+                
+                BarMark(
+                    x: .value("Date", formatShortDate(dateStr)),
+                    y: .value("Heures", hours)
+                )
+                .foregroundStyle(Color.red.gradient)
+                .annotation(position: .top) {
+                    if hours > 0 {
+                        Text(String(format: "%.1fh", hours)).font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { value in
+                AxisGridLine()
+                AxisValueLabel {
+                    if let doubleVal = value.as(Double.self) {
+                        Text("\(Int(doubleVal))h")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func getLast7DaysStrings() -> [String] {
+        var dates: [String] = []
+        let today = Date()
+        for i in (0..<7).reversed() {
+            if let d = Calendar.current.date(byAdding: .day, value: -i, to: today) {
+                dates.append(DateFormatter.yyyyMMdd.string(from: d))
+            }
+        }
+        return dates
+    }
+    
+    private func formatShortDate(_ str: String) -> String {
+        guard let d = DateFormatter.yyyyMMdd.date(from: str) else { return str }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd/MM"
+        return formatter.string(from: d)
+    }
+}
+
 
 // MARK: - GENERAL VIEW & CHARTS
 struct GeneralView: View {
@@ -741,7 +992,6 @@ struct ParcoursDashboardView: View {
                         }.padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
                     }
                     
-                    // NOUVEAUX GRAPHIQUES DASHBOARD
                     HStack(alignment: .top, spacing: 20) {
                         VStack(alignment: .leading) {
                             HStack { Text("Crédits par Année").font(.headline); Spacer(); Button(action: { zoomedItem = .chartCreditsYear }) { Image(systemName: "plus.magnifyingglass") } }
