@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dominez votre blocus - Bloc.us</title>
     <link rel="icon" href="icon/icon.ico" type="image/x-icon">
-    <!-- Chargement de Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Police Inter de Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
-    <!-- Configuration personnalisée de Tailwind -->
     <script>
         tailwind.config = {
             theme: {
@@ -33,7 +30,6 @@
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans antialiased selection:bg-brand-500 selection:text-white">
 
-    <!-- NAVIGATION -->
     <nav class="container mx-auto px-6 py-6 flex justify-between items-center">
         <div class="flex items-center space-x-2">
             <span class="text-2xl font-black text-gray-900 tracking-tight">🎓 Bloc<span class="text-brand-500">.us</span></span>
@@ -50,7 +46,6 @@
         </div>
     </nav>
 
-    <!-- HERO SECTION -->
     <section class="container mx-auto px-6 pt-16 pb-20 text-center">
         <div class="inline-block bg-brand-50 border border-brand-100 text-brand-600 px-4 py-1.5 rounded-full text-sm font-semibold mb-6 shadow-sm">
             🚀 Conçu spécialement pour macOS
@@ -74,7 +69,6 @@
         </div>
     </section>
 
-    <!-- SECTION FONCTIONNALITÉS (Alternée) -->
     <section id="fonctionnalites" class="bg-white py-24 border-t border-gray-100 overflow-hidden">
         <div class="container mx-auto px-6">
             
@@ -83,118 +77,191 @@
                 <p class="text-gray-500 text-lg max-w-2xl mx-auto">Tout ce dont vous avez besoin pour ne rien oublier, réuni dans une interface native et épurée.</p>
             </div>
 
-            <!-- Feature 1 -->
-            <div class="flex flex-col md:flex-row items-center gap-12 mb-24">
-                <div class="w-full md:w-1/2">
-                    <img src="images/dashboard.png" alt="Tableau de bord Bloc.us" class="rounded-xl shadow-2xl border border-gray-200">
-                </div>
+            <div class="flex flex-col md:flex-row items-center gap-12 mb-28">
                 <div class="w-full md:w-1/2">
                     <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">🎯</div>
                     <h3 class="text-3xl font-bold text-gray-900 mb-4">Votre tableau de bord intelligent</h3>
-                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Ne vous laissez plus submerger. Le <strong>Focus du jour</strong> filtre votre calendrier et vous montre uniquement les objectifs de la journée.</p>
-                    <p class="text-lg text-gray-600 leading-relaxed">Visualisez d'un clin d'œil votre équilibre d'étude et la répartition de votre temps grâce à nos graphiques interactifs.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-4">Ne vous laissez plus submerger. Le <strong>Focus du jour</strong> filtre votre calendrier et vous montre uniquement les objectifs et tâches de la journée.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-4">Visualisez d'un clin d'œil votre équilibre d'étude, vos points stratégiques et la répartition de votre temps grâce à nos graphiques interactifs.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed">Suivez vos pourcentages d'accomplissement de chaque cours en temps réel pour une <strong>motivation visuelle</strong> constante.</p>
+                </div>
+                <div class="w-full md:w-1/2 group">
+                    <div class="relative w-full rounded-xl overflow-hidden shadow-2xl bg-gray-900 aspect-video flex items-center justify-center">
+                        <img id="img-dashboard" src="images/dashboard-1.png" alt="Dashboard" class="absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+                        <button onclick="prevSlideManually('dashboard')" class="absolute left-3 top-1/2 -translate-y-1/2 bg-white/20 text-white p-2.5 rounded-full z-10 hover:bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"></path></svg>
+                        </button>
+                        <button onclick="nextSlideManually('dashboard')" class="absolute right-3 top-1/2 -translate-y-1/2 bg-white/20 text-white p-2.5 rounded-full z-10 hover:bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"></path></svg>
+                        </button>
+                        <div id="dots-dashboard" class="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-10"></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Feature 2 -->
-            <div class="flex flex-col md:flex-row-reverse items-center gap-12 mb-24">
+            <div class="flex flex-col md:flex-row-reverse items-center gap-12 mb-28">
                 <div class="w-full md:w-1/2">
-                    <img src="images/calendrier.png" alt="Calendrier Bloc.us" class="rounded-xl shadow-2xl border border-gray-200">
+                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">✅</div>
+                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Cours, Tâches & Simulation</h3>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-4"><strong>Découpez la montagne en étapes :</strong> Divisez chaque matière en petites tâches (Slides, Vidéos, TPs) et savourez la satisfaction de voir vos barres de progression se remplir.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-4"><strong>Micro-gestion avec les TODOs :</strong> Chaque cours possède sa propre liste de tâches logistiques. Assignez des dates limites, cochez vos réussites et gardez l'esprit libre.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed"><strong>Simulateur de réussite :</strong> Entrez vos notes d'évaluation continue. L'app calcule instantanément les points exacts qu'il vous reste à décrocher le jour de l'examen final.</p>
                 </div>
+                <div class="w-full md:w-1/2 group">
+                    <div class="relative w-full rounded-xl overflow-hidden shadow-2xl bg-gray-900 aspect-video flex items-center justify-center">
+                        <img id="img-cours" src="images/cours-1.png" alt="Cours et Tâches" class="absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+                        <button onclick="prevSlideManually('cours')" class="absolute left-3 top-1/2 -translate-y-1/2 bg-white/20 text-white p-2.5 rounded-full z-10 hover:bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"></path></svg>
+                        </button>
+                        <button onclick="nextSlideManually('cours')" class="absolute right-3 top-1/2 -translate-y-1/2 bg-white/20 text-white p-2.5 rounded-full z-10 hover:bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"></path></svg>
+                        </button>
+                        <div id="dots-cours" class="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-10"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center gap-12 mb-28">
+                <div class="w-full md:w-1/2">
+                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">🏆</div>
+                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Gérez votre Parcours Académique</h3>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-4">Ayez une vision macro sur vos études. Suivez en un clin d'œil votre <strong>moyenne globale pondérée</strong> et vos crédits validés.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed">Encodez vos programmes complets pour analyser votre succès académique sur le long terme : évolution année par année, taux de réussite par session, et notes maximales par cours.</p>
+                </div>
+                <div class="w-full md:w-1/2 group">
+                    <div class="relative w-full rounded-xl overflow-hidden shadow-2xl bg-gray-900 aspect-video flex items-center justify-center">
+                        <img id="img-parcours" src="images/parcours-1.png" alt="Parcours Académique" class="absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+                        <button onclick="prevSlideManually('parcours')" class="absolute left-3 top-1/2 -translate-y-1/2 bg-white/20 text-white p-2.5 rounded-full z-10 hover:bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"></path></svg>
+                        </button>
+                        <button onclick="nextSlideManually('parcours')" class="absolute right-3 top-1/2 -translate-y-1/2 bg-white/20 text-white p-2.5 rounded-full z-10 hover:bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"></path></svg>
+                        </button>
+                        <div id="dots-parcours" class="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-10"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row-reverse items-center gap-12 mb-28">
+                <div class="w-full md:w-1/2">
+                    <div class="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-gray-100">🎧</div>
+                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Mode Focus & Tracker de Productivité</h3>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-4">Gagnez en concentration profonde. Le <strong>Mode Focus</strong> coupe le bruit ambiant pour vous dédier totalement à votre tâche.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed">Associez chaque session à un commentaire précis (ex: *LINFO1101*) et trackez votre temps de travail exact pour analyser vos performances dans notre hub analytique.</p>
+                </div>
+                <div class="w-full md:w-1/2 group">
+                    <div class="relative w-full rounded-xl overflow-hidden shadow-2xl bg-gray-900 aspect-video flex items-center justify-center">
+                        <img id="img-focus" src="images/focus-1.png" alt="Mode Focus" class="absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+                        <button onclick="prevSlideManually('focus')" class="absolute left-3 top-1/2 -translate-y-1/2 bg-white/20 text-white p-2.5 rounded-full z-10 hover:bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"></path></svg>
+                        </button>
+                        <button onclick="nextSlideManually('focus')" class="absolute right-3 top-1/2 -translate-y-1/2 bg-white/20 text-white p-2.5 rounded-full z-10 hover:bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"></path></svg>
+                        </button>
+                        <div id="dots-focus" class="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-10"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center gap-12 mb-28">
                 <div class="w-full md:w-1/2">
                     <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">📅</div>
                     <h3 class="text-3xl font-bold text-gray-900 mb-4">Un planning visuel et intuitif</h3>
-                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Planifiez vos sessions d'étude et vos examens en quelques secondes. Le calendrier interactif vous offre une vue globale sur votre mois.</p>
-                    <ul class="space-y-3 text-gray-600">
-                        <li class="flex items-center"><svg class="w-5 h-5 text-brand-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Code couleur par cours</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-brand-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Ajout d'objectifs précis (ex: Chapitre 5)</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-brand-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Vue dégagée et minimaliste avec indicateur du jour</li>
-                    </ul>
+                    <p class="text-lg text-gray-600 leading-relaxed mb-4">Planifiez vos sessions d'étude et vos examens en quelques secondes. Le calendrier interactif vous offre une vue globale sur votre mois avec un <strong>code couleur par cours</strong>.</p>
+                    <p class="text-lg text-gray-600 leading-relaxed"><strong>Mode "Alerte Examen" :</strong> Le jour J, l'application passe en mode alerte. Ouvrez l'application et retrouvez instantanément l'heure exacte et le local de votre épreuve pour arriver serein.</p>
+                </div>
+                <div class="w-full md:w-1/2">
+                    <div class="relative w-full rounded-xl overflow-hidden shadow-2xl bg-gray-900 aspect-video flex items-center justify-center">
+                        <img id="img-planning" src="images/planning-1.png" alt="Planning" class="absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+                    </div>
                 </div>
             </div>
 
-            <!-- Feature 3 -->
-            <div class="flex flex-col md:flex-row items-center gap-12 mb-24">
-                <div class="w-full md:w-1/2">
-                    <img src="images/taches.png" alt="Gestion des tâches" class="rounded-xl shadow-2xl border border-gray-200">
-                </div>
-                <div class="w-full md:w-1/2">
-                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">✅</div>
-                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Découpez la montagne en étapes</h3>
-                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Fini l'angoisse face à un cours énorme. Divisez chaque matière en petites tâches (Slides, Vidéos, TPs).</p>
-                    <p class="text-lg text-gray-600 leading-relaxed">Savourez la satisfaction de voir vos barres de progression se remplir jour après jour vers les 100%.</p>
-                </div>
-            </div>
-
-            <!-- Feature 4 -->
-            <div class="flex flex-col md:flex-row-reverse items-center gap-12 mb-24">
-                <div class="w-full md:w-1/2">
-                    <img src="images/simulateur.png" alt="Simulateur d'examen" class="rounded-xl shadow-2xl border border-gray-200">
-                </div>
-                <div class="w-full md:w-1/2">
-                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">🎓</div>
-                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Simulateur de réussite intégré</h3>
-                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Ne naviguez plus à l'aveugle. Entrez vos notes d'évaluation continue (TPs, Projets) et définissez votre propre objectif (ex: 10/20).</p>
-                    <p class="text-lg text-gray-600 leading-relaxed">L'application calcule instantanément <strong>les points exacts qu'il vous reste à décrocher</strong> le jour de l'examen final.</p>
-                </div>
-            </div>
-
-            <!-- Feature 5 -->
-            <div class="flex flex-col md:flex-row items-center gap-12 mb-24">
-                <div class="w-full md:w-1/2">
-                    <img src="images/alerte-exam.png" alt="Alerte Examen" class="rounded-xl shadow-2xl border border-gray-200">
-                </div>
-                <div class="w-full md:w-1/2">
-                    <div class="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-red-100">🚨</div>
-                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Mode "Alerte Examen"</h3>
-                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Le jour J, l'application passe en mode alerte pour vous éviter toute panique de dernière minute.</p>
-                    <p class="text-lg text-gray-600 leading-relaxed">Ouvrez l'application et retrouvez instantanément <strong>l'heure exacte et le local</strong> de votre épreuve pour arriver serein et concentré.</p>
-                </div>
-            </div>
-
-            <!-- NOUVEAU : Feature 6 (Le Widget Barre des Menus) -->
-            <div class="flex flex-col md:flex-row-reverse items-center gap-12 mb-24">
-                <div class="w-full md:w-1/2">
-                    <img src="images/app-icon.png" alt="Widget Barre des menus" class="rounded-xl shadow-2xl border border-gray-200 max-w-sm mx-auto">
-                </div>
-                <div class="w-full md:w-1/2">
-                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">⚡</div>
-                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Toujours à portée de clic</h3>
-                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Inutile d'ouvrir l'application en grand. Un widget natif ultra-rapide se loge discrètement dans la <strong>barre des menus de votre Mac</strong>.</p>
-                    <p class="text-lg text-gray-600 leading-relaxed">Cliquez sur l'icône pour voir instantanément votre focus du jour, le suivi de votre progression et la note visée pour chaque examen.</p>
-                </div>
-            </div>
-
-            <!-- NOUVEAU : Feature 7 (Les TODO Lists) -->
-            <div class="flex flex-col md:flex-row items-center gap-12 mb-24">
-                <div class="w-full md:w-1/2">
-                    <img src="images/todo.png" alt="Liste TODO" class="rounded-xl shadow-2xl border border-gray-200">
-                </div>
-                <div class="w-full md:w-1/2">
-                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">📝</div>
-                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Micro-gestion avec les TODOs</h3>
-                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Parce qu'étudier un cours demande parfois des petites actions logistiques (imprimer le syllabus, envoyer un mail au prof, acheter un livre...).</p>
-                    <p class="text-lg text-gray-600 leading-relaxed">Chaque matière possède désormais sa propre <strong>liste de tâches (TODO)</strong>. Assignez des dates limites, cochez vos réussites et gardez l'esprit totalement libre.</p>
-                </div>
-            </div>
-
-            <!-- NOUVEAU : Feature 8 (Vue d'ensemble / Progression) -->
-            <div class="flex flex-col md:flex-row-reverse items-center gap-12">
-                <div class="w-full md:w-1/2">
-                    <img src="images/dashboard-2.png" alt="Progression détaillée" class="rounded-xl shadow-2xl border border-gray-200">
-                </div>
-                <div class="w-full md:w-1/2">
-                    <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl mb-6 border border-brand-100">📈</div>
-                    <h3 class="text-3xl font-bold text-gray-900 mb-4">Une motivation visuelle</h3>
-                    <p class="text-lg text-gray-600 leading-relaxed mb-6">Gardez le cap grâce à un suivi clair et précis. Le tableau de bord affiche les pourcentages d'accomplissement de chaque cours en un coup d'œil.</p>
-                    <p class="text-lg text-gray-600 leading-relaxed">Suivez également le compte à rebours de vos jours d'étude prévus et restants pour toujours savoir où vous en êtes dans votre blocus.</p>
-                </div>
-            </div>
 
         </div>
     </section>
 
-    <!-- SECTION TEMOIGNAGES -->
+    <section id="comparatif" class="bg-gray-50 py-24 border-t border-gray-200">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <span class="text-brand-500 font-bold tracking-wider uppercase text-sm mb-2 block">Comparatif</span>
+                <h2 class="text-3xl md:text-4xl font-black text-gray-900 mb-4">Pourquoi abandonner vos anciens outils ?</h2>
+                <p class="text-gray-500 text-lg max-w-2xl mx-auto">Vous perdez un temps précieux avec des solutions qui ne sont pas conçues spécifiquement pour la réalité d'un blocus universitaire.</p>
+            </div>
+
+            <div class="max-w-5xl mx-auto">
+                <div class="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden hidden md:block">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-gray-100 bg-gray-50/50">
+                                <th class="p-6 text-lg font-bold text-gray-900 w-1/4">Fonctionnalités</th>
+                                <th class="p-6 text-center text-gray-500 font-bold w-1/4 border-l border-gray-100">📊 Excel / Sheets</th>
+                                <th class="p-6 text-center text-gray-500 font-bold w-1/4 border-l border-gray-100">📓 Notion</th>
+                                <th class="p-6 text-center text-white bg-brand-600 font-black text-xl w-1/4 shadow-md relative">
+                                    🎓 Bloc.us
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <tr class="hover:bg-gray-50/50 transition">
+                                <td class="p-6 font-medium text-gray-900">Mise en place initiale</td>
+                                <td class="p-6 text-center text-gray-500 border-l border-gray-100">Création de tableaux de A à Z</td>
+                                <td class="p-6 text-center text-gray-500 border-l border-gray-100">Usine à gaz (recherche de templates)</td>
+                                <td class="p-6 text-center font-bold text-brand-600 bg-brand-50 border-x border-brand-100">0 seconde, tout est prêt</td>
+                            </tr>
+                            <tr class="hover:bg-gray-50/50 transition">
+                                <td class="p-6 font-medium text-gray-900">Simulateur d'examen</td>
+                                <td class="p-6 text-center text-gray-500 border-l border-gray-100">Formules mathématiques manuelles</td>
+                                <td class="p-6 text-center text-red-400 border-l border-gray-100">❌ Inexistant</td>
+                                <td class="p-6 text-center font-bold text-brand-600 bg-brand-50 border-x border-brand-100">✅ Intégré & Automatique</td>
+                            </tr>
+                            <tr class="hover:bg-gray-50/50 transition">
+                                <td class="p-6 font-medium text-gray-900">Minuteur Focus & Tracker</td>
+                                <td class="p-6 text-center text-red-400 border-l border-gray-100">❌ Inexistant</td>
+                                <td class="p-6 text-center text-gray-500 border-l border-gray-100">Nécessite des widgets externes lents</td>
+                                <td class="p-6 text-center font-bold text-brand-600 bg-brand-50 border-x border-brand-100">✅ Natif (avec graphiques)</td>
+                            </tr>
+                            <tr class="hover:bg-gray-50/50 transition">
+                                <td class="p-6 font-medium text-gray-900">Connexion Internet</td>
+                                <td class="p-6 text-center text-gray-500 border-l border-gray-100">Recommandée (pour Sheets)</td>
+                                <td class="p-6 text-center text-red-400 border-l border-gray-100">❌ Obligatoire</td>
+                                <td class="p-6 text-center font-bold text-brand-600 bg-brand-50 border-x border-brand-100">✅ 100% Hors-ligne</td>
+                            </tr>
+                            <tr class="hover:bg-gray-50/50 transition">
+                                <td class="p-6 font-medium text-gray-900">Performances macOS</td>
+                                <td class="p-6 text-center text-gray-500 border-l border-gray-100">Application web (gourmande en RAM)</td>
+                                <td class="p-6 text-center text-gray-500 border-l border-gray-100">Application web (lente)</td>
+                                <td class="p-6 text-center font-bold text-brand-600 bg-brand-50 border-x border-brand-100 rounded-b-xl shadow-inner">✅ Native, ultra-rapide & légère</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="md:hidden space-y-6">
+                    <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm opacity-90">
+                        <h3 class="text-xl font-bold text-gray-900 mb-4 border-b border-gray-100 pb-3">❌ Les outils génériques (Notion, Excel...)</h3>
+                        <ul class="space-y-4 text-gray-600">
+                            <li class="flex items-start"><span class="mr-2 text-red-400">➖</span> Chronophages à configurer et maintenir</li>
+                            <li class="flex items-start"><span class="mr-2 text-red-400">➖</span> Pas de recalcul automatique des notes visées</li>
+                            <li class="flex items-start"><span class="mr-2 text-red-400">➖</span> Connexion internet souvent obligatoire</li>
+                            <li class="flex items-start"><span class="mr-2 text-red-400">➖</span> Applications web lourdes sur la batterie</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="bg-brand-600 p-6 rounded-2xl shadow-xl relative border border-brand-500 mt-8">
+                        <h3 class="text-2xl font-black text-white mb-4 border-b border-brand-500/50 pb-3">🎓 Bloc.us</h3>
+                        <ul class="space-y-4 text-brand-50 font-medium">
+                            <li class="flex items-start"><svg class="w-6 h-6 mr-2 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Prêt à l'emploi en 0 seconde</li>
+                            <li class="flex items-start"><svg class="w-6 h-6 mr-2 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Simulateur de notes automatique</li>
+                            <li class="flex items-start"><svg class="w-6 h-6 mr-2 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> 100% hors-ligne (zéro distraction internet)</li>
+                            <li class="flex items-start"><svg class="w-6 h-6 mr-2 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Application macOS native, pensée pour la productivité</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <section id="temoignages" class="bg-gray-50 py-24 border-t border-gray-200">
         <div class="container mx-auto px-6">
             <div class="text-center mb-16">
@@ -232,7 +299,6 @@
         </div>
     </section>
 
-    <!-- SECTION FAQ -->
     <section id="faq" class="bg-white py-24 border-t border-gray-100">
         <div class="container mx-auto px-6">
             <div class="text-center mb-16">
@@ -241,43 +307,35 @@
             </div>
 
             <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-                <!-- Question 1 -->
                 <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
                     <h4 class="font-bold text-gray-900 mb-2">Est-ce que Bloc.us est vraiment gratuit ?</h4>
                     <p class="text-gray-600">Oui, à 100%. Il n'y a aucun abonnement, aucune publicité, et aucun achat in-app. C'est un outil créé par un étudiant pour aider les autres étudiants.</p>
                 </div>
-                <!-- Question 2 -->
                 <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
                     <h4 class="font-bold text-gray-900 mb-2">Faut-il une connexion internet ?</h4>
-                    <p class="text-gray-600">Non, pas du tout ! Bloc.us fonctionne entièrement hors-ligne. Vous pouvez planifier votre session au fond de la bibliothèque sans aucun réseau Wi-Fi.</p>
+                    <p class="text-gray-600">Non, pas du tout ! Bloc.us fonctionne entièrement hors-ligne. Vous pouvez lancer votre Focus ou planifier votre session au fond de la bibliothèque sans aucun réseau Wi-Fi.</p>
                 </div>
-                <!-- Question 3 -->
                 <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
                     <h4 class="font-bold text-gray-900 mb-2">Où sont stockées mes données ?</h4>
-                    <p class="text-gray-600">Uniquement sur le disque dur de votre Mac. Nous n'avons aucun serveur externe. Votre vie privée est garantie et personne ne peut voir vos notes ou votre emploi du temps.</p>
+                    <p class="text-gray-600">Uniquement sur le disque dur de votre Mac. Nous n'avons aucun serveur externe. Votre vie privée est garantie et personne ne peut voir vos notes, votre emploi du temps ou votre temps de travail.</p>
                 </div>
-                <!-- Question 4 -->
                 <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-                    <h4 class="font-bold text-gray-900 mb-2">Est-ce disponible sur Windows ou Android ?</h4>
-                    <p class="text-gray-600">Pour le moment, Bloc.us est une application macOS native développée en SwiftUI. Cependant, le projet étant open-source, une version web/Windows pourrait voir le jour via la communauté !</p>
+                    <h4 class="font-bold text-gray-900 mb-2">Est-ce disponible sur Windows ou iOS ?</h4>
+                    <p class="text-gray-600">Pour le moment, Bloc.us est une application macOS native (SwiftUI). Une version iOS compagnon est envisagée pour l'avenir, mais le Mac reste le cœur du réacteur pour travailler !</p>
                 </div>
-                <!-- Question 5 -->
                 <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
                     <h4 class="font-bold text-gray-900 mb-2">Puis-je voir le code source ?</h4>
-                    <p class="text-gray-600">Absolument ! Le code complet de l'application est transparent et disponible sur <a href="https://github.com/Arthvrr/Bloc.us" target="_blank" class="text-brand-500 font-semibold hover:underline">mon dépôt GitHub</a>. N'hésitez pas à y jeter un œil, proposer des améliorations ou laisser une étoile !</p>
+                    <p class="text-gray-600">Absolument ! Le code complet de l'application est transparent et disponible sur <a href="https://github.com/Arthvrr/Bloc.us" target="_blank" class="text-brand-500 font-semibold hover:underline">mon dépôt GitHub</a>.</p>
                 </div>
-                <!-- Question 6 -->
                 <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100">
                     <h4 class="font-bold text-gray-900 mb-2">Comment sauvegarder mon planning ?</h4>
-                    <p class="text-gray-600">La sauvegarde est automatique et invisible ("Zéro Clic"). Dès que vous modifiez un élément, l'application enregistre tout instantanément. Vous pouvez fermer l'app l'esprit tranquille.</p>
+                    <p class="text-gray-600">La sauvegarde est automatique et invisible ("Zéro Clic"). Dès que vous modifiez un élément ou lancez un Focus, l'application enregistre tout instantanément. Vous pouvez fermer l'app l'esprit tranquille.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- FOOTER CTA -->
     <section id="download" class="bg-gray-900 py-20 text-center relative overflow-hidden">
-        <!-- Effet de lueur bleue en fond -->
         <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-500 rounded-full blur-[120px] opacity-20 pointer-events-none"></div>
         
         <div class="container mx-auto px-6 relative z-10">
@@ -290,10 +348,8 @@
         </div>
     </section>
 
-    <!-- FOOTER AVEC POLITIQUE DE CONFIDENTIALITÉ -->
     <footer class="bg-white pt-16 pb-8 border-t border-gray-200">
         <div class="container mx-auto px-6">
-            <!-- Top Footer : Liens et identité -->
             <div class="flex flex-col md:flex-row justify-between items-center mb-12">
                 <div class="text-center md:text-left mb-6 md:mb-0">
                     <p class="text-xl font-black text-gray-900 mb-1">🎓 Bloc<span class="text-brand-500">.us</span></p>
@@ -301,13 +357,12 @@
                 </div>
                 <div class="flex space-x-6">
                     <a href="https://github.com/Arthvrr/Bloc.us" target="_blank" class="text-gray-500 hover:text-brand-500 font-medium transition flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path></svg>
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path></svg>
                         Code Source (GitHub)
                     </a>
                 </div>
             </div>
 
-            <!-- Bottom Footer : Politique de confidentialité -->
             <div class="border-t border-gray-100 pt-8 text-center md:text-left text-sm text-gray-400 space-y-4">
                 <p>
                     <strong class="text-gray-500">Politique de confidentialité & Open Source :</strong> Bloc.us est un utilitaire conçu dans le respect absolu de votre vie privée. L'application fonctionne intégralement en local sur votre appareil. 
@@ -318,5 +373,115 @@
         </div>
     </footer>
 
+    <script>
+        // Dictionnaire des images par catégorie
+        const carouselData = {
+            'dashboard': ['images/dashboard-1.png', 'images/dashboard-2.png'],
+            'cours': ['images/cours-1.png', 'images/cours-2.png', 'images/cours-3.png'],
+            'parcours': ['images/parcours-1.png', 'images/parcours-2.png', 'images/parcours-3.png', 'images/parcours-4.png'],
+            'focus': ['images/focus-1.png', 'images/focus-2.png'], // Ajout des images focus
+            'planning': ['images/planning-1.png']
+        };
+
+        // Suivi de l'index actuel pour chaque catégorie
+        const indices = {
+            'dashboard': 0,
+            'cours': 0,
+            'parcours': 0,
+            'focus': 0,
+            'planning': 0
+        };
+
+        // Suivi des IDs d'intervalle pour pouvoir les réinitialiser
+        const intervals = {};
+
+        // Fonction pour mettre à jour l'image et les points
+        function updateCarousel(category) {
+            const imgEl = document.getElementById(`img-${category}`);
+            const dotsContainer = document.getElementById(`dots-${category}`);
+            if (!imgEl) return;
+            
+            const total = carouselData[category].length;
+            
+            // 1. Mettre à jour l'image avec transition
+            imgEl.style.opacity = 0;
+            setTimeout(() => {
+                imgEl.src = carouselData[category][indices[category]];
+                imgEl.style.opacity = 1;
+            }, 300);
+
+            // 2. Mettre à jour les points (dots) s'ils existent
+            if (dotsContainer && total > 1) {
+                dotsContainer.innerHTML = '';
+                for (let i = 0; i < total; i++) {
+                    const dot = document.createElement('div');
+                    dot.className = `h-2 rounded-full transition-all duration-300 ${i === indices[category] ? 'bg-brand-500 w-6 shadow-md' : 'bg-white/50 w-2'}`;
+                    dotsContainer.appendChild(dot);
+                }
+            }
+        }
+
+        // Fonction générique pour passer à la diapositive suivante (auto)
+        function nextSlideAuto(category) {
+            if (carouselData[category].length > 1) {
+                indices[category] = (indices[category] + 1) % carouselData[category].length;
+                updateCarousel(category);
+            }
+        }
+
+        // Fonction générique pour passer à la diapositive précédente (auto)
+        function prevSlideAuto(category) {
+            if (carouselData[category].length > 1) {
+                indices[category] = (indices[category] - 1 + carouselData[category].length) % carouselData[category].length;
+                updateCarousel(category);
+            }
+        }
+
+        // --- NAVIGATION MANUELLE (réinitialise le timer) ---
+
+        window.nextSlideManually = function(category) {
+            if (carouselData[category].length > 1) {
+                indices[category] = (indices[category] + 1) % carouselData[category].length;
+                updateCarousel(category);
+                resetAutoScroll(category); // Relancer le timer
+            }
+        };
+
+        window.prevSlideManually = function(category) {
+            if (carouselData[category].length > 1) {
+                indices[category] = (indices[category] - 1 + carouselData[category].length) % carouselData[category].length;
+                updateCarousel(category);
+                resetAutoScroll(category); // Relancer le timer
+            }
+        };
+
+        // Fonction pour démarrer/redémarrer le défilement automatique
+        function resetAutoScroll(category) {
+            // Arrêter l'ancien timer s'il existe
+            if (intervals[category]) {
+                clearInterval(intervals[category]);
+            }
+            // S'il y a plus d'une image, démarrer un nouveau timer
+            if (carouselData[category].length > 1) {
+                intervals[category] = setInterval(() => nextSlideAuto(category), 3000);
+            }
+        }
+
+        // Initialisation de tous les carousels
+        function initCarousels() {
+            for (let cat in carouselData) {
+                // S'assurer que le premier dot container est dessiné
+                const dotsContainer = document.getElementById(`dots-${cat}`);
+                if (dotsContainer && carouselData[cat].length > 1) {
+                    updateCarousel(cat); // Dessine les points initiaux
+                }
+                // Démarrer le défilement automatique
+                resetAutoScroll(cat);
+            }
+        }
+
+        // Lance l'initialisation une fois la page chargée
+        document.addEventListener('DOMContentLoaded', initCarousels);
+    </script>
 </body>
 </html>
